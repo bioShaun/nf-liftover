@@ -1,5 +1,7 @@
 # Liftover 流程说明（示例）
 
+> Legacy 手工流程参考。新流程请优先使用 [`docs/usage.md`](usage.md) 中的一条 `nextflow run /public/scripts/nf-liftover` 命令。
+
 以 **Solanum lycopersicum (SL4.0)** 坐标的变异位点转换至 **LA2093** 参考基因组为例。
 
 ## 流程参数一览

@@ -4,6 +4,11 @@
   "title": "nf-liftover parameters",
   "type": "object",
   "properties": {
+    "help": {
+      "type": ["boolean", "string"],
+      "description": "Show parameter help and exit",
+      "default": false
+    },
     "id": {
       "type": "string",
       "description": "Input chrom_pos ID file"
@@ -58,6 +63,19 @@
     },
     "conda_envs": {
       "type": "object"
+    },
+    "max_cpus": {
+      "type": "integer",
+      "default": 16,
+      "minimum": 1
+    },
+    "max_memory": {
+      "type": "string",
+      "default": "60.GB"
+    },
+    "max_time": {
+      "type": "string",
+      "default": "48.h"
     }
   },
   "required": ["id", "ref_fa", "query_fa"],

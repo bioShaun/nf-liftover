@@ -1,5 +1,6 @@
 from pathlib import Path
 import importlib.util
+import sys
 import tempfile
 import unittest
 
@@ -11,6 +12,7 @@ def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -83,6 +85,59 @@ class RestoreSplitPafTests(unittest.TestCase):
             fields = out.read_text(encoding="utf-8").strip().split("\t")
             self.assertEqual(fields[:4], ["SL4.0ch01", "100000", "10005", "10020"])
             self.assertEqual(fields[4:], ["+", "la2093.chr01", "120000", "30", "45", "15", "15", "60", "cs:Z::15"])
+
+
+class LiftoverByIdTests(unittest.TestCase):
+    def test_parses_chrom_pos_id_from_last_underscore(self):
+        module = load_module("liftover_by_id", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        self.assertEqual(module.parse_id_to_chrom_pos("SL4.0ch01_123"), ("SL4.0ch01", 123))
+        self.assertEqual(module.parse_id_to_chrom_pos("chr_name_with_underscores_456"), ("chr_name_with_underscores", 456))
+
+    def test_sorts_bed_records_by_fai_order_then_start(self):
+        module = load_module("liftover_by_id", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        bed_df = module.pd.DataFrame(
+            [
+                {"chrom": "chr2", "start": 8, "pos": 9},
+                {"chrom": "chr1", "start": 20, "pos": 21},
+                {"chrom": "chr1", "start": 10, "pos": 11},
+            ]
+        )
+        chrom_df = module.pd.DataFrame(
+            [
+                {"chrom": "chr1", "chrom_size": 100},
+                {"chrom": "chr2", "chrom_size": 100},
+            ]
+        )
+
+        sorted_df = module.sort_bed_by_fai(bed_df, chrom_df)
+
+        self.assertEqual(sorted_df["chrom"].astype(str).tolist(), ["chr1", "chr1", "chr2"])
+        self.assertEqual(sorted_df["start"].tolist(), [10, 20, 8])
+
+    def test_slop_and_merge_clamps_to_chromosome_bounds(self):
+        module = load_module("liftover_by_id", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        bed_df = module.pd.DataFrame(
+            [
+                {"chrom": "chr1", "start": 2, "pos": 3},
+                {"chrom": "chr1", "start": 8, "pos": 9},
+                {"chrom": "chr1", "start": 97, "pos": 98},
+                {"chrom": "chr2", "start": 10, "pos": 11},
+            ]
+        )
+
+        merged_df = module.slop_and_merge(bed_df, {"chr1": 100, "chr2": 15}, flank=5)
+
+        self.assertEqual(
+            merged_df.to_dict(orient="records"),
+            [
+                {"chrom": "chr1", "start": 0, "end": 14},
+                {"chrom": "chr1", "start": 92, "end": 100},
+                {"chrom": "chr2", "start": 5, "end": 15},
+            ],
+        )
 
 
 if __name__ == "__main__":

@@ -88,7 +88,7 @@ flowchart TD
 - `nextflow_schema.json`：参数 schema（`id`、`ref_fa`、`query_fa`、`outdir`、`mapping`(可选)、`split_threshold`、`split_size`、`flank`）。
 - `conf/`：
   - `base.config`（labels：`small_mem` / `medium_mem` / `large_mem`）
-  - `conda.config`（labels `tool_ngs`、`tool_py`；env 名通过 `params.conda_envs` 映射到 `bioinfo` / `py-13`；`params.conda_dir` 默认 `/project/software/miniforge3`，可用 `--conda_dir` 覆盖；每个 label 同时设置 `conda` 与 `env.PATH` 双保险）
+  - `conda.config`（labels `tool_ngs`、`tool_py`；env 名通过 `params.conda_envs` 映射到 `bioinfo` / `py-13`；`params.conda_dir` 默认 `/project/software/miniforge3`，可用 `--conda_dir` 覆盖；每个 label 同时设置 `conda` 与 `beforeScript` PATH 兜底）
   - `slurm.config`（profiles：`slurm` 走 `normal` 队列、`slurm_new` 走 `cae` 队列；本机默认 `-profile standard` = local executor）
 - `subworkflows/`：
   - `prepare_genomes.nf`
@@ -232,21 +232,21 @@ output {
    process {
      withLabel: 'tool_ngs' {
        conda    = "${params.conda_dir}/envs/${params.conda_envs.ngs}"
-       env.PATH = "${params.conda_dir}/envs/${params.conda_envs.ngs}/bin:\$PATH"
+      beforeScript = "export PATH=${params.conda_dir}/envs/${params.conda_envs.ngs}/bin:\$PATH"
      }
      withLabel: 'tool_py' {
        conda    = "${params.conda_dir}/envs/${params.conda_envs.py}"
-       env.PATH = "${params.conda_dir}/envs/${params.conda_envs.py}/bin:\$PATH"
+      beforeScript = "export PATH=${params.conda_dir}/envs/${params.conda_envs.py}/bin:\$PATH"
      }
    }
    ```
 
    process 只写 `label 'tool_ngs'` 或 `label 'tool_py'`；以后 `py-13` 改名为 `py3-13`、`bioinfo` 改名为 `ngs`，只调 `params.conda_envs` 这一处。
 3. **`params.conda_dir`** 默认 `/project/software/miniforge3`（写入 `nextflow.config`），仍允许 `--conda_dir` 覆盖。
-4. **二进制路径托底（PATH 兜底）**：每个 label 同时设 `conda` 与 `env.PATH`。`env.PATH` 是 Nextflow 进程级环境变量，会注入到 `.command.sh` 中并优先于系统 PATH，因此即便 `conda activate` 没生效（shell hook 失败 / 跑流程时关闭了 conda profile），脚本仍能直接调用 `seqkit` / `samtools` / `minimap2` / `transanno` / `python`。
+4. **二进制路径托底（PATH 兜底）**：每个 label 同时设 `conda` 与 `beforeScript`。`beforeScript` 会在进程脚本前导出对应 env 的 `bin` 到 PATH，因此即便 `conda activate` 没生效（shell hook 失败 / 跑流程时关闭了 conda profile），脚本仍能直接调用 `seqkit` / `samtools` / `minimap2` / `transanno` / `python`。
 5. **严格 Nextflow 版本**：`manifest.nextflowVersion = '>=26.0.0'`（不放宽到 25.x），保证 DSL 行为一致。
 6. **离线 nf-schema 插件**（HPC 测试时不一定有公网）：`docs/usage.md` 写明 `nextflow plugin install nf-schema@2.2.0` + `~/.nextflow/plugins/` 拷贝步骤；`nextflow.config` 钉死版本。流程同时保留极简 fallback 校验路径以便在插件缺失时仍能 `-resume` 调试。
-7. **SLURM**（本机暂无，部署到 HPC 再用）：沿用 `tc-ngs-nf-utils/workflows/nextflow.config` 的写法——`profiles.slurm`（队列 `normal`）、`profiles.slurm_new`（队列 `cae`），`executor.$slurm { queueSize = 500; pollInterval = '30sec' }`。本机默认 profile 为 `standard`（local executor）。
+7. **SLURM**（本机暂无，部署到 HPC 再用）：沿用 `tc-ngs-nf-utils/workflows/nextflow.config` 的队列选择——`profiles.slurm`（队列 `normal`）、`profiles.slurm_new`（队列 `cae`），executor 全局设置 `queueSize = 500` 与 `pollInterval = '30sec'`。本机默认 profile 为 `standard`（local executor）。
 
 ## 输入基因组 `.fai` 自动探测
 
@@ -342,7 +342,7 @@ nextflow run /public/scripts/nf-liftover \
 ### 本轮已完成（核心难点）
 
 - [x] **scaffold-core**：创建核心骨架：`main.nf`、`nextflow.config`、`conf/{base,conda,slurm}.config`、`nextflow_schema.json`，并在 manifest 中严格锁定 `nextflowVersion '>=26.0.0'`。
-- [x] **env-map**：实现 `tool_ngs` / `tool_py` 的逻辑 label 到物理 conda env 映射，`conda` 与 `env.PATH` 双保险均已落到 `conf/conda.config`。
+- [x] **env-map**：实现 `tool_ngs` / `tool_py` 的逻辑 label 到物理 conda env 映射，`conda` 与 `beforeScript` PATH 双保险均已落到 `conf/conda.config`。
 - [x] **helper-tests**：新增 `tests/test_core_helpers.py`，覆盖染色体对应推导与 split PAF 坐标还原。
 - [x] **deriveChromPairs**：新增 `bin/derive_chrom_pairs.py`，支持 `order` / `suffix` 自动推导与用户 `--mapping` 校验复制。
 - [x] **restoreSplitPaf**：新增 `bin/restore_split_paf.py`，将 `seqkit sliding` 产生的 PAF query 坐标还原回原染色体坐标。
@@ -353,13 +353,13 @@ nextflow run /public/scripts/nf-liftover \
 
 ### 留给后续 AI 的简单收尾
 
-- [ ] **schema-polish**：`nextflow_schema.json` 已创建；后续接入 `nf-schema` 的 `validateParameters()` / `paramsSummaryLog()`，并补完整 help 文案。
+- [x] **schema-polish**：已接入 `nf-schema` 的 `validateParameters()` / `paramsSummaryLog()`，补充入口 `--help` 文案，并把资源参数纳入 `nextflow_schema.json`。
 - [ ] **output-block**：当前核心流程为兼容性仍使用 `publishDir`；后续可按 Nextflow 26 最终语法切换到 workflow `output:` 块统一发布 `chain` / `liftover` / `versions.yml`。
 - [ ] **versions**：为所有 process 增加 `versions` topic channel，汇总输出 `software_versions.yml`。
-- [ ] **full-vendor-liftover**：当前 `bin/liftover_by_id.py` 是稳定 wrapper，仍调用 `/public/scripts/tc-pytools/liftover/liftover_by_id.py`；若要完全 self-contained，后续把完整脚本 vendor 进来。
+- [x] **full-vendor-liftover**：`bin/liftover_by_id.py` 已从外部 wrapper 改为仓库内自包含实现，并为 ID 解析、FAI 排序、snpcalling slop/merge 补充单元测试。
 - [ ] **nf-test**：接入小染色体对 + 样例 ID，作为 nf-test 黄金参考；首跑生成 chain MD5 与 `snpcalling.bed` 行数基线。
-- [ ] **example**：在 `examples/sl4-vs-la2093/` 准备可一键提交的 `run.sh`（路径取自 `/public/data/genomes/solanum_lycopersicum_LA2093/`），含 `chrom_pairs.tsv`（可选）与 `README.md`。
-- [ ] **usage-docs**：新写 `docs/usage.md`（含 nf-schema 离线插件预置步骤、conda env 要求）；保留 [`docs/pipe.md`](pipe.md) 作为 legacy 参考并在头部增加 DEPRECATED 提示。
+- [x] **example**：已在 `examples/sl4-vs-la2093/` 准备可一键提交的 `run.sh` 与 `README.md`，路径取自 `/public/data/genomes/solanum_lycopersicum_LA2093/`。
+- [x] **usage-docs**：已新增 `docs/usage.md`（含 nf-schema 离线插件预置步骤、conda env 要求）；[`docs/pipe.md`](pipe.md) 头部已标记为 legacy 手工流程参考。
 - [ ] **deprecate-old-nf**：在 tc-ngs-nf-utils 的 `align_chromosomes.nf` 与 `align_chromosomes-whole.nf` 文件头加上 DEPRECATED 注释，指向 nf-liftover。
 
 ### 后续接手提示
