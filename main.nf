@@ -5,6 +5,32 @@ include { ALIGN_AND_CHAIN  } from './subworkflows/align_and_chain'
 include { LIFTOVER         } from './subworkflows/liftover'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
 
+process COLLECT_SOFTWARE_VERSIONS {
+    tag 'software_versions'
+    label 'tool_py_ngs'
+    label 'small_mem'
+
+    publishDir "${params.outdir}", mode: 'copy'
+
+    input:
+    val nextflow_version
+
+    output:
+    path 'software_versions.yml', emit: versions
+
+    script:
+    """
+    {
+      echo 'nextflow: "${nextflow_version}"'
+      echo "python: \\"\$(python --version 2>&1 | awk '{ print \$2 }')\\""
+      echo "samtools: \\"\$(samtools --version | awk 'NR == 1 { print \$2 }')\\""
+      echo "seqkit: \\"\$(seqkit version | awk '{ print \$2 }')\\""
+      echo "minimap2: \\"\$(minimap2 --version)\\""
+      echo "transanno: \\"\$(transanno --version | awk '{ print \$2 }')\\""
+    } > software_versions.yml
+    """
+}
+
 workflow {
     if (params.help) {
         log.info """
@@ -63,4 +89,6 @@ workflow {
         PREPARE_GENOMES.out.query_fa,
         PREPARE_GENOMES.out.query_fai
     )
+
+    COLLECT_SOFTWARE_VERSIONS(Channel.value(workflow.nextflow.version))
 }

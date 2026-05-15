@@ -54,8 +54,24 @@ HPC 上把 `-profile standard` 改为 `-profile slurm` 或 `-profile slurm_new`�
 - `liftover/<probe>.bed`
 - `liftover/<probe>.pos.tsv`
 - `liftover/<probe>.snpcalling.bed`
+- `software_versions.yml`
 
 其中 `<probe>` 来自输入 ID 文件名 stem，例如 `TCZZSL20K.id` 对应 `TCZZSL20K.bed`。
+
+## 测试
+
+仓库内包含一个番茄 10 kb smoke fixture，可用 nf-test 跑完整流程回归：
+
+```bash
+PATH="/project/software/miniforge3/envs/nextflow/bin:$PATH" \
+  /project/software/miniforge3/envs/nextflow/bin/nf-test test tests/tomato_smoke.nf.test
+```
+
+也可以直接运行：
+
+```bash
+bash tests/data/tomato-smoke/run-smoke.sh
+```
 
 ## nf-schema 插件
 
