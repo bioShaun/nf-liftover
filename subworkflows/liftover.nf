@@ -1,3 +1,5 @@
+nextflow.enable.types = true
+
 process LIFTOVER_BY_ID {
     tag "${id_file.baseName}"
     label 'tool_py_ngs'
@@ -6,14 +8,14 @@ process LIFTOVER_BY_ID {
     publishDir "${params.outdir}/liftover", mode: 'copy', saveAs: { file -> file.tokenize('/').last() }
 
     input:
-    path id_file
-    path chain
-    path ref_fa
-    path query_fa
-    path query_fai
+    id_file: Path
+    chain: Path
+    ref_fa: Path
+    query_fa: Path
+    query_fai: Path
 
     output:
-    path 'out/*', emit: files
+    files = files('out/*')
 
     script:
     """

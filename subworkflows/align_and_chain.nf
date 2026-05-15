@@ -1,3 +1,5 @@
+nextflow.enable.types = true
+
 process ALIGN_AND_CHAIN_PROCESS {
     tag 'align_and_chain'
     label 'tool_ngs'
@@ -6,15 +8,15 @@ process ALIGN_AND_CHAIN_PROCESS {
     publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.*'
 
     input:
-    path ref_fa
-    path query_fa
-    path ref_fai
-    path query_fai
-    path chrom_pairs
+    ref_fa: Path
+    query_fa: Path
+    ref_fai: Path
+    query_fai: Path
+    chrom_pairs: Path
 
     output:
-    path 'all.paf', emit: paf
-    path 'all.chain', emit: chain
+    paf: Path = file('all.paf')
+    chain: Path = file('all.chain')
 
     script:
     """

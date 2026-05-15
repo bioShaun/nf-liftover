@@ -1,3 +1,7 @@
 .nextflow/
 .nextflow.log*
+.nf-test/
+.nf-test.log*
+__pycache__/
+*.py[cod]
 work/
