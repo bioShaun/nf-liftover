@@ -167,5 +167,60 @@ class TomatoSmokeFixtureTests(unittest.TestCase):
         self.assertEqual(parsed_ids, [("SL4.0ch01", 1000), ("SL4.0ch01", 5000), ("SL4.0ch01", 9000)])
 
 
+class NextflowTypedMigrationTests(unittest.TestCase):
+    def test_prepare_genomes_uses_records_for_high_risk_channel_shapes(self):
+        main_nf = (REPO_ROOT / "main.nf").read_text(encoding="utf-8")
+        prepare_nf = (REPO_ROOT / "subworkflows" / "prepare_genomes.nf").read_text(encoding="utf-8")
+
+        self.assertIn("record(role: 'ref'", main_nf)
+        self.assertIn("record(role: 'query'", main_nf)
+        self.assertIn("record(mapping_file: file(params.mapping))", main_nf)
+        self.assertIn("record(mapping_file: null)", main_nf)
+        self.assertIn("record(", prepare_nf)
+        self.assertNotIn("record GenomeInput", prepare_nf)
+        self.assertNotIn("record ChromMapping", prepare_nf)
+        self.assertNotIn("tuple val(role), val(source_fasta), path(fasta), val(fai_hint)", prepare_nf)
+        self.assertNotIn("tuple val(has_mapping), path(mapping_file)", prepare_nf)
+
+    def test_liftover_process_uses_typed_inputs_and_outputs(self):
+        liftover_nf = (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8")
+
+        self.assertIn("nextflow.enable.types = true", liftover_nf)
+        self.assertIn("id_file: Path", liftover_nf)
+        self.assertIn("chain: Path", liftover_nf)
+        self.assertIn("files = files('out/*')", liftover_nf)
+        self.assertNotIn("path id_file", liftover_nf)
+        self.assertNotIn("path 'out/*', emit: files", liftover_nf)
+
+    def test_align_and_chain_process_uses_typed_inputs_and_outputs(self):
+        align_nf = (REPO_ROOT / "subworkflows" / "align_and_chain.nf").read_text(encoding="utf-8")
+
+        self.assertIn("nextflow.enable.types = true", align_nf)
+        self.assertIn("ref_fa: Path", align_nf)
+        self.assertIn("query_fa: Path", align_nf)
+        self.assertIn("paf: Path = file('all.paf')", align_nf)
+        self.assertIn("chain: Path = file('all.chain')", align_nf)
+        self.assertNotIn("path ref_fa", align_nf)
+        self.assertNotIn("path 'all.paf', emit: paf", align_nf)
+
+    def test_main_workflow_uses_explicit_call_outputs(self):
+        main_nf = (REPO_ROOT / "main.nf").read_text(encoding="utf-8")
+
+        self.assertIn("prepared = PREPARE_GENOMES(", main_nf)
+        self.assertIn("aligned = ALIGN_AND_CHAIN(", main_nf)
+        self.assertNotIn("PREPARE_GENOMES.out.", main_nf)
+        self.assertNotIn("ALIGN_AND_CHAIN.out.", main_nf)
+
+    def test_nextflow_scripts_do_not_use_legacy_out_property(self):
+        scripts = [REPO_ROOT / "main.nf", *sorted((REPO_ROOT / "subworkflows").glob("*.nf"))]
+        offenders = [
+            str(script.relative_to(REPO_ROOT))
+            for script in scripts
+            if ".out." in script.read_text(encoding="utf-8")
+        ]
+
+        self.assertEqual(offenders, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -357,7 +357,8 @@ nextflow run /public/scripts/nf-liftover \
 - [ ] **output-block**：当前核心流程为兼容性仍使用 `publishDir`；后续可按 Nextflow 26 最终语法切换到 workflow `output:` 块统一发布 `chain` / `liftover` / `versions.yml`。
 - [ ] **versions**：为所有 process 增加 `versions` topic channel，汇总输出 `software_versions.yml`。
 - [x] **full-vendor-liftover**：`bin/liftover_by_id.py` 已从外部 wrapper 改为仓库内自包含实现，并为 ID 解析、FAI 排序、snpcalling slop/merge 补充单元测试。
-- [ ] **nf-test**：接入小染色体对 + 样例 ID，作为 nf-test 黄金参考；首跑生成 chain MD5 与 `snpcalling.bed` 行数基线。
+- [x] **nf-test**：已接入小染色体对 + 样例 ID，作为 nf-test 黄金参考；覆盖显式 `--mapping` 与省略 `--mapping` 自动推导两条路径。
+- [x] **typed-nextflow-trial**：已在独立 `typed-nextflow` 分支启用 `nextflow.enable.types = true`，将高风险 genome/mapping tuple 改为 record，并迁移 process 输入输出到 typed syntax。
 - [x] **example**：已在 `examples/sl4-vs-la2093/` 准备可一键提交的 `run.sh` 与 `README.md`，路径取自 `/public/data/genomes/solanum_lycopersicum_LA2093/`。
 - [x] **usage-docs**：已新增 `docs/usage.md`（含 nf-schema 离线插件预置步骤、conda env 要求）；[`docs/pipe.md`](pipe.md) 头部已标记为 legacy 手工流程参考。
 - [ ] **deprecate-old-nf**：在 tc-ngs-nf-utils 的 `align_chromosomes.nf` 与 `align_chromosomes-whole.nf` 文件头加上 DEPRECATED 注释，指向 nf-liftover。
@@ -365,6 +366,7 @@ nextflow run /public/scripts/nf-liftover \
 ### 后续接手提示
 
 - 最核心的数据流已经在 `main.nf` → `subworkflows/prepare_genomes.nf` → `subworkflows/align_and_chain.nf` → `subworkflows/liftover.nf` 中串好。
+- `typed-nextflow` 分支已改用显式 workflow/process 调用结果变量，Nextflow 脚本中不再通过 `.out` 属性读取输出，便于后续继续 typed workflow 迁移。
 - 本轮核心实现为了避免 `seqkit split` 输出文件命名不稳定，采用 `samtools faidx` 按染色体抽取 fasta；只有大染色体 split 分支使用 `seqkit sliding`。如果后续仍希望保留“提前拆分全基因组目录”的形态，可在不改变下游接口的前提下替换 `prepare/align` 内部实现。
 - 如果后续要继续优化并行度，优先把 `ALIGN_AND_CHAIN_PROCESS` 的 bash loop 拆成 per-chromosome process；算法逻辑可直接沿用当前实现。
 - whole/split 判定使用 **ref/original FASTA** 的 `.fai` 长度，这与旧流程 `--ref_fai /Query-genome/genome.fa.fai` 的语义一致。
