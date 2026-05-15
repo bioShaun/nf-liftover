@@ -1,0 +1,6 @@
+nextflow: "26.04.0"
+python: "3.13.12"
+samtools: "1.23"
+seqkit: "v2.13.0"
+minimap2: "2.30-r1287"
+transanno: "0.4.5"
