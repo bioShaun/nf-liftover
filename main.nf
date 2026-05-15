@@ -1,5 +1,7 @@
 #!/usr/bin/env nextflow
 
+nextflow.enable.types = true
+
 include { PREPARE_GENOMES } from './subworkflows/prepare_genomes'
 include { ALIGN_AND_CHAIN  } from './subworkflows/align_and_chain'
 include { LIFTOVER         } from './subworkflows/liftover'
@@ -13,10 +15,10 @@ process COLLECT_SOFTWARE_VERSIONS {
     publishDir "${params.outdir}", mode: 'copy'
 
     input:
-    val nextflow_version
+    nextflow_version: String
 
     output:
-    path 'software_versions.yml', emit: versions
+    versions: Path = file('software_versions.yml')
 
     script:
     """
@@ -64,31 +66,31 @@ workflow {
     log.info paramsSummaryLog([parameters_schema: 'nextflow_schema.json'], workflow)
 
     mapping_ch = params.mapping
-        ? Channel.value(tuple(true, file(params.mapping)))
-        : Channel.value(tuple(false, []))
+        ? channel.value(record(mapping_file: file(params.mapping)))
+        : channel.value(record(mapping_file: null))
 
-    PREPARE_GENOMES(
-        Channel.of(tuple('ref', params.ref_fa, file(params.ref_fa), params.ref_fai ?: '')),
-        Channel.of(tuple('query', params.query_fa, file(params.query_fa), params.query_fai ?: '')),
+    prepared = PREPARE_GENOMES(
+        channel.of(record(role: 'ref', source_fasta: params.ref_fa, fasta: file(params.ref_fa), fai_hint: params.ref_fai ?: '')),
+        channel.of(record(role: 'query', source_fasta: params.query_fa, fasta: file(params.query_fa), fai_hint: params.query_fai ?: '')),
         mapping_ch,
-        Channel.value(params.pair_strategy)
+        channel.value(params.pair_strategy)
     )
 
-    ALIGN_AND_CHAIN(
-        PREPARE_GENOMES.out.ref_fa,
-        PREPARE_GENOMES.out.query_fa,
-        PREPARE_GENOMES.out.ref_fai,
-        PREPARE_GENOMES.out.query_fai,
-        PREPARE_GENOMES.out.chrom_pairs
+    aligned = ALIGN_AND_CHAIN(
+        prepared.ref_fa,
+        prepared.query_fa,
+        prepared.ref_fai,
+        prepared.query_fai,
+        prepared.chrom_pairs
     )
 
     LIFTOVER(
-        Channel.value(file(params.id)),
-        ALIGN_AND_CHAIN.out.chain,
-        PREPARE_GENOMES.out.ref_fa,
-        PREPARE_GENOMES.out.query_fa,
-        PREPARE_GENOMES.out.query_fai
+        channel.value(file(params.id)),
+        aligned.chain,
+        prepared.ref_fa,
+        prepared.query_fa,
+        prepared.query_fai
     )
 
-    COLLECT_SOFTWARE_VERSIONS(Channel.value(workflow.nextflow.version))
+    COLLECT_SOFTWARE_VERSIONS(channel.value(workflow.nextflow.version))
 }
