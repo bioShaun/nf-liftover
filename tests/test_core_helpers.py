@@ -6,6 +6,7 @@ import unittest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+TOMATO_SMOKE = REPO_ROOT / "tests" / "data" / "tomato-smoke"
 
 
 def load_module(name: str, path: Path):
@@ -138,6 +139,32 @@ class LiftoverByIdTests(unittest.TestCase):
                 {"chrom": "chr2", "start": 5, "end": 15},
             ],
         )
+
+
+class TomatoSmokeFixtureTests(unittest.TestCase):
+    def test_tomato_smoke_fixture_has_pairable_fastas_and_ids(self):
+        derive_module = load_module("derive_chrom_pairs_fixture", REPO_ROOT / "bin" / "derive_chrom_pairs.py")
+        liftover_module = load_module("liftover_by_id_fixture", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        ref_fai = TOMATO_SMOKE / "SL4.0ch01.10kb.fa.fai"
+        query_fai = TOMATO_SMOKE / "LA2093.chr01.10kb.fa.fai"
+        ids = TOMATO_SMOKE / "tomato-smoke.id"
+        mapping = TOMATO_SMOKE / "chrom_pairs.tsv"
+
+        for fixture in (ref_fai, query_fai, ids, mapping):
+            self.assertTrue(fixture.is_file(), f"Missing fixture: {fixture}")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "derived.tsv"
+            derive_module.derive_chrom_pairs(ref_fai, query_fai, out, mapping=mapping)
+            self.assertEqual(out.read_text(encoding="utf-8"), "SL4.0ch01\tchr01\n")
+
+        parsed_ids = [
+            liftover_module.parse_id_to_chrom_pos(line.strip())
+            for line in ids.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        self.assertEqual(parsed_ids, [("SL4.0ch01", 1000), ("SL4.0ch01", 5000), ("SL4.0ch01", 9000)])
 
 
 if __name__ == "__main__":

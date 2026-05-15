@@ -37,10 +37,14 @@ workflow {
     validateParameters([parameters_schema: 'nextflow_schema.json'])
     log.info paramsSummaryLog([parameters_schema: 'nextflow_schema.json'], workflow)
 
+    mapping_ch = params.mapping
+        ? Channel.value(tuple(true, file(params.mapping)))
+        : Channel.value(tuple(false, []))
+
     PREPARE_GENOMES(
         Channel.of(tuple('ref', params.ref_fa, file(params.ref_fa), params.ref_fai ?: '')),
         Channel.of(tuple('query', params.query_fa, file(params.query_fa), params.query_fai ?: '')),
-        Channel.value(params.mapping ?: ''),
+        mapping_ch,
         Channel.value(params.pair_strategy)
     )
 

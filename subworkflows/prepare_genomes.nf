@@ -32,14 +32,14 @@ process DERIVE_CHROM_PAIRS {
     input:
     path ref_fai
     path query_fai
-    val mapping
+    tuple val(has_mapping), path(mapping_file)
     val strategy
 
     output:
     path 'chrom_pairs.tsv', emit: pairs
 
     script:
-    def mapping_args = mapping ? "--mapping ${mapping}" : ''
+    def mapping_args = has_mapping ? "--mapping \"${mapping_file}\"" : ''
     """
     python ${projectDir}/bin/derive_chrom_pairs.py \\
       --ref-fai "${ref_fai}" \\

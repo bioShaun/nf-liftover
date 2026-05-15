@@ -18,9 +18,6 @@ process ALIGN_AND_CHAIN_PROCESS {
 
     script:
     """
-    cp "${ref_fai}" "${ref_fa.name}.fai"
-    cp "${query_fai}" "${query_fa.name}.fai"
-
     mkdir -p chroms pafs
 
     while IFS=\$'\\t' read -r ref_chr query_chr; do

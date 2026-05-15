@@ -1,6 +1,6 @@
 process LIFTOVER_BY_ID {
     tag "${id_file.baseName}"
-    label 'tool_py'
+    label 'tool_py_ngs'
     label 'medium_mem'
 
     publishDir "${params.outdir}/liftover", mode: 'copy'
@@ -18,7 +18,6 @@ process LIFTOVER_BY_ID {
     script:
     """
     mkdir -p out
-    cp "${query_fai}" "${query_fa.name}.fai"
 
     python ${projectDir}/bin/liftover_by_id.py \\
       "${id_file}" \\
