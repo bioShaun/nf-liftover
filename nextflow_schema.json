@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.internal/nf-liftover/nextflow_schema.json",
+  "title": "nf-liftover parameters",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Input chrom_pos ID file"
+    },
+    "ref_fa": {
+      "type": "string",
+      "description": "Original/reference FASTA"
+    },
+    "query_fa": {
+      "type": "string",
+      "description": "Target/new FASTA"
+    },
+    "ref_fai": {
+      "type": ["string", "null"],
+      "description": "Optional FASTA index for ref_fa"
+    },
+    "query_fai": {
+      "type": ["string", "null"],
+      "description": "Optional FASTA index for query_fa"
+    },
+    "mapping": {
+      "type": ["string", "null"],
+      "description": "Optional two-column chromosome mapping TSV"
+    },
+    "outdir": {
+      "type": "string",
+      "default": "results"
+    },
+    "pair_strategy": {
+      "type": "string",
+      "enum": ["order", "suffix"],
+      "default": "suffix"
+    },
+    "split_threshold": {
+      "type": "integer",
+      "default": 100000000,
+      "minimum": 1
+    },
+    "split_size": {
+      "type": "integer",
+      "default": 10000000,
+      "minimum": 1
+    },
+    "flank": {
+      "type": "integer",
+      "default": 100,
+      "minimum": 0
+    },
+    "conda_dir": {
+      "type": "string",
+      "default": "/project/software/miniforge3"
+    },
+    "conda_envs": {
+      "type": "object"
+    }
+  },
+  "required": ["id", "ref_fa", "query_fa"],
+  "additionalProperties": true
+}
