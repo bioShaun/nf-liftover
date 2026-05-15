@@ -59,9 +59,9 @@ workflow ALIGN_AND_CHAIN {
     chrom_pairs
 
     main:
-    ALIGN_AND_CHAIN_PROCESS(ref_fa, query_fa, ref_fai, query_fai, chrom_pairs)
+    alignment = ALIGN_AND_CHAIN_PROCESS(ref_fa, query_fa, ref_fai, query_fai, chrom_pairs)
 
     emit:
-    paf   = ALIGN_AND_CHAIN_PROCESS.out.paf
-    chain = ALIGN_AND_CHAIN_PROCESS.out.chain
+    paf   = alignment.paf
+    chain = alignment.chain
 }

@@ -1,21 +1,9 @@
 nextflow.enable.types = true
 
-record GenomeInput {
-    role: String
-    source_fasta: String
-    fasta: Path
-    fai_hint: String
-}
-
 record IndexedGenome {
     role: String
     fasta: Path
     fai: Path
-}
-
-record ChromMapping {
-    has_mapping: Boolean
-    mapping_file: Path?
 }
 
 process MAYBE_FAIDX {
@@ -58,7 +46,6 @@ process DERIVE_CHROM_PAIRS {
     ref_fai: Path
     query_fai: Path
     record(
-        has_mapping: Boolean,
         mapping_file: Path?
     )
     strategy: String
@@ -67,7 +54,7 @@ process DERIVE_CHROM_PAIRS {
     pairs: Path = file('chrom_pairs.tsv')
 
     script:
-    def mapping_args = has_mapping ? "--mapping \"${mapping_file}\"" : ''
+    def mapping_args = mapping_file ? "--mapping \"${mapping_file}\"" : ''
     """
     python ${projectDir}/bin/derive_chrom_pairs.py \\
       --ref-fai "${ref_fai}" \\
@@ -86,12 +73,12 @@ workflow PREPARE_GENOMES {
     strategy
 
     main:
-    MAYBE_FAIDX(ref_input.mix(query_input))
+    indexed_genomes = MAYBE_FAIDX(ref_input.mix(query_input))
 
-    ref_indexed = MAYBE_FAIDX.out.indexed.filter { genome -> genome.role == 'ref' }
-    query_indexed = MAYBE_FAIDX.out.indexed.filter { genome -> genome.role == 'query' }
+    ref_indexed = indexed_genomes.filter { genome -> genome.role == 'ref' }
+    query_indexed = indexed_genomes.filter { genome -> genome.role == 'query' }
 
-    DERIVE_CHROM_PAIRS(
+    pairs = DERIVE_CHROM_PAIRS(
         ref_indexed.map { genome -> genome.fai },
         query_indexed.map { genome -> genome.fai },
         mapping,
@@ -103,5 +90,5 @@ workflow PREPARE_GENOMES {
     ref_fai     = ref_indexed.map { genome -> genome.fai }
     query_fa    = query_indexed.map { genome -> genome.fasta }
     query_fai   = query_indexed.map { genome -> genome.fai }
-    chrom_pairs = DERIVE_CHROM_PAIRS.out.pairs
+    chrom_pairs = pairs
 }

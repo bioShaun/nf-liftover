@@ -41,8 +41,8 @@ workflow LIFTOVER {
     query_fai
 
     main:
-    LIFTOVER_BY_ID(id_file, chain, ref_fa, query_fa, query_fai)
+    lifted = LIFTOVER_BY_ID(id_file, chain, ref_fa, query_fa, query_fai)
 
     emit:
-    files = LIFTOVER_BY_ID.out.files
+    files = lifted
 }

@@ -174,9 +174,11 @@ class NextflowTypedMigrationTests(unittest.TestCase):
 
         self.assertIn("record(role: 'ref'", main_nf)
         self.assertIn("record(role: 'query'", main_nf)
-        self.assertIn("record(has_mapping: true", main_nf)
-        self.assertIn("record(has_mapping: false", main_nf)
+        self.assertIn("record(mapping_file: file(params.mapping))", main_nf)
+        self.assertIn("record(mapping_file: null)", main_nf)
         self.assertIn("record(", prepare_nf)
+        self.assertNotIn("record GenomeInput", prepare_nf)
+        self.assertNotIn("record ChromMapping", prepare_nf)
         self.assertNotIn("tuple val(role), val(source_fasta), path(fasta), val(fai_hint)", prepare_nf)
         self.assertNotIn("tuple val(has_mapping), path(mapping_file)", prepare_nf)
 
@@ -208,6 +210,16 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertIn("aligned = ALIGN_AND_CHAIN(", main_nf)
         self.assertNotIn("PREPARE_GENOMES.out.", main_nf)
         self.assertNotIn("ALIGN_AND_CHAIN.out.", main_nf)
+
+    def test_nextflow_scripts_do_not_use_legacy_out_property(self):
+        scripts = [REPO_ROOT / "main.nf", *sorted((REPO_ROOT / "subworkflows").glob("*.nf"))]
+        offenders = [
+            str(script.relative_to(REPO_ROOT))
+            for script in scripts
+            if ".out." in script.read_text(encoding="utf-8")
+        ]
+
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__":

@@ -66,8 +66,8 @@ workflow {
     log.info paramsSummaryLog([parameters_schema: 'nextflow_schema.json'], workflow)
 
     mapping_ch = params.mapping
-        ? channel.value(record(has_mapping: true, mapping_file: file(params.mapping)))
-        : channel.value(record(has_mapping: false, mapping_file: null))
+        ? channel.value(record(mapping_file: file(params.mapping)))
+        : channel.value(record(mapping_file: null))
 
     prepared = PREPARE_GENOMES(
         channel.of(record(role: 'ref', source_fasta: params.ref_fa, fasta: file(params.ref_fa), fai_hint: params.ref_fai ?: '')),
