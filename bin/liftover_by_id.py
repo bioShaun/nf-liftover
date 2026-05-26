@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 from inspect import cleandoc
-from pathlib import Path
-from typing import Annotated
 import subprocess
+from pathlib import Path
+from typing import Annotated, Sequence
 
 import pandas as pd
 import typer
@@ -39,6 +39,7 @@ MODULE_HELP = cleandoc(
       - <probe_name>.bed: 3 列（chrom, start, pos），按 query.fa.fai 排序
       - <probe_name>.pos.tsv: 3 列（chrom, pos, id），其中 id 为输入 ID，chrom/pos 为 liftover 后坐标
       - <probe_name>.snpcalling.bed: 3 列（chrom, start, end），slop+merge 后的区间
+      - 启用 split 时，.id/.pos.tsv 仍为 liftover 后原目标坐标，.bed/.snpcalling.bed 输出 split 坐标
     """
 )
 
@@ -200,6 +201,184 @@ def slop_and_merge(
     return pd.DataFrame(merged_rows, columns=["chrom", "start", "end"])
 
 
+def write_bed(df: pd.DataFrame, out_bed: Path, columns: Sequence[str]) -> None:
+    """按 BED 三列格式写入文件。"""
+    df.to_csv(out_bed, sep="\t", index=False, header=False, columns=columns)
+
+
+def load_split_bed(split_bed: Path) -> pd.DataFrame:
+    """读取并校验 split.bed 文件。"""
+    if not split_bed.exists():
+        raise FileNotFoundError(f"找不到 split.bed: {split_bed}")
+
+    try:
+        split_bed_df = pd.read_table(
+            split_bed,
+            header=None,
+            names=["chrom", "split_start", "split_end", "new_chrom"],
+            usecols=[0, 1, 2, 3],
+        )
+    except Exception as exc:  # pragma: no cover - pandas exception details vary
+        raise ValueError(
+            "split.bed 格式错误，必须包含 4 列: chrom, split_start, split_end, new_chrom"
+        ) from exc
+
+    split_bed_df["chrom"] = split_bed_df["chrom"].astype(str)
+    split_bed_df["new_chrom"] = split_bed_df["new_chrom"].astype(str)
+    split_bed_df["split_start"] = pd.to_numeric(
+        split_bed_df["split_start"], errors="raise"
+    ).astype(int)
+    split_bed_df["split_end"] = pd.to_numeric(
+        split_bed_df["split_end"], errors="raise"
+    ).astype(int)
+    return split_bed_df
+
+
+def load_split_chrom_order(split_genome_fai: Path) -> list[str]:
+    """读取 split 基因组染色体顺序。"""
+    if not split_genome_fai.exists():
+        raise FileNotFoundError(f"找不到 split genome fai: {split_genome_fai}")
+
+    chrom_df = pd.read_table(split_genome_fai, header=None, names=["chrom"], usecols=[0])
+    chrom_order = chrom_df["chrom"].astype(str).tolist()
+    if not chrom_order:
+        raise ValueError(f"split genome fai 为空: {split_genome_fai}")
+    return chrom_order
+
+
+def split_bed_dataframe(
+    bed_df: pd.DataFrame,
+    split_bed_df: pd.DataFrame,
+    start_col: str,
+    end_col: str,
+) -> pd.DataFrame:
+    """将 query genome BED 坐标映射到 split genome 坐标。"""
+    source_df = bed_df.copy()
+    source_df["chrom"] = source_df["chrom"].astype(str)
+    source_df["start"] = pd.to_numeric(source_df[start_col], errors="raise").astype(int)
+    source_df["end"] = pd.to_numeric(source_df[end_col], errors="raise").astype(int)
+
+    merge_df = source_df[["chrom", "start", "end"]].merge(split_bed_df, on="chrom")
+    merge_df = merge_df[
+        (merge_df["start"] >= merge_df["split_start"])
+        & (merge_df["start"] < merge_df["split_end"])
+    ].copy()
+    merge_df["new_start"] = (merge_df["start"] - merge_df["split_start"]).astype(int)
+    merge_df["new_end"] = (merge_df["end"] - merge_df["split_start"]).astype(int)
+    return merge_df[["new_chrom", "new_start", "new_end"]]
+
+
+def sort_split_output_by_fai(
+    split_df: pd.DataFrame,
+    split_chrom_order: list[str],
+) -> pd.DataFrame:
+    """按 split genome FAI 的染色体顺序排序 split 输出。"""
+    if split_df.empty:
+        return split_df
+
+    ordered_df = split_df.copy()
+    ordered_df["new_chrom"] = ordered_df["new_chrom"].astype(str)
+    missing = sorted(set(ordered_df["new_chrom"].unique()) - set(split_chrom_order))
+    if missing:
+        raise ValueError(
+            f"split 输出中存在不在 split genome fai 的染色体: {', '.join(missing)}"
+        )
+
+    ordered_df["new_chrom"] = pd.Categorical(
+        ordered_df["new_chrom"],
+        categories=split_chrom_order,
+        ordered=True,
+    )
+    ordered_df = ordered_df.sort_values(
+        by=["new_chrom", "new_start", "new_end"],
+        kind="mergesort",
+    ).reset_index(drop=True)
+    ordered_df["new_chrom"] = ordered_df["new_chrom"].astype(str)
+    return ordered_df
+
+
+def resolve_split_genome_fai(
+    split_bed: Path,
+    split_genome_fai: Path | None,
+) -> Path:
+    """解析 split genome fai；未显式提供时使用 split.bed 同目录的 genome.fa.fai。"""
+    if split_genome_fai is not None:
+        return split_genome_fai
+
+    inferred_fai = split_bed.parent / "genome.fa.fai"
+    if inferred_fai.exists():
+        return inferred_fai
+
+    raise ValueError(
+        "启用 --split-bed 时需要 --split-genome-fai，"
+        "或在 split.bed 同目录提供 genome.fa.fai"
+    )
+
+
+def write_liftover_outputs(
+    sorted_bed: pd.DataFrame,
+    snpcalling_sorted: pd.DataFrame,
+    outdir: Path,
+    probe_name: str,
+    split_bed: Path | None,
+    split_genome_fai: Path | None,
+) -> None:
+    """写入 liftover ID、坐标表和 BED；启用 split 时仅 BED 坐标转换到 split 基因组。"""
+    probe_id_file = outdir / f"{probe_name}.id"
+    sorted_bed.to_csv(probe_id_file, sep="\t", index=False, header=False, columns=["pos_id"])
+    logger.info(f"已写入 ID 文件: {probe_id_file}")
+
+    probe_pos_file = outdir / f"{probe_name}.pos.tsv"
+    sorted_bed.to_csv(
+        probe_pos_file,
+        sep="\t",
+        index=False,
+        header=False,
+        columns=["chrom", "pos", "id"],
+    )
+    logger.info(f"已写入位点坐标文件: {probe_pos_file}")
+
+    probe_bed = outdir / f"{probe_name}.bed"
+    snpcalling_bed = outdir / f"{probe_name}.snpcalling.bed"
+    if split_bed is None:
+        write_bed(sorted_bed, probe_bed, columns=["chrom", "start", "pos"])
+        logger.info(f"已写入 BED 文件: {probe_bed}")
+        write_bed(snpcalling_sorted, snpcalling_bed, columns=["chrom", "start", "end"])
+        logger.info(f"已写入 snpcalling BED: {snpcalling_bed}")
+        return
+
+    split_bed_df = load_split_bed(split_bed)
+    resolved_split_genome_fai = resolve_split_genome_fai(split_bed, split_genome_fai)
+    split_chrom_order = load_split_chrom_order(resolved_split_genome_fai)
+
+    split_target_df = split_bed_dataframe(
+        sorted_bed,
+        split_bed_df,
+        start_col="start",
+        end_col="pos",
+    )
+    split_target_df = sort_split_output_by_fai(split_target_df, split_chrom_order)
+    split_snpcalling_df = split_bed_dataframe(
+        snpcalling_sorted,
+        split_bed_df,
+        start_col="start",
+        end_col="end",
+    )
+    split_snpcalling_df = sort_split_output_by_fai(
+        split_snpcalling_df,
+        split_chrom_order,
+    )
+
+    write_bed(split_target_df, probe_bed, columns=["new_chrom", "new_start", "new_end"])
+    logger.info(f"已写入 split BED 文件: {probe_bed}")
+    write_bed(
+        split_snpcalling_df,
+        snpcalling_bed,
+        columns=["new_chrom", "new_start", "new_end"],
+    )
+    logger.info(f"已写入 split snpcalling BED: {snpcalling_bed}")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -214,8 +393,22 @@ def main(
     outdir: Annotated[Path, typer.Argument(help="输出目录")],
     force: Annotated[bool, typer.Option(help="强制重新生成所有中间文件")] = False,
     flank: Annotated[int, typer.Option(help="snpcalling BED 区间两侧扩展长度")] = 100,
+    split_bed: Annotated[
+        Path | None,
+        typer.Option(help="split.bed 文件路径；提供后 BED 输出 split 坐标"),
+    ] = None,
+    split_genome_fai: Annotated[
+        Path | None,
+        typer.Option(
+            help="split 基因组 fai（.fai），用于按染色体顺序排序 split 输出；"
+            "未提供时会尝试使用 split.bed 同目录下的 genome.fa.fai"
+        ),
+    ] = None,
 ) -> None:
     """根据 ID 文件进行 liftover 并生成 BED/ID 文件。"""
+    if flank < 0:
+        raise typer.BadParameter(f"flank 必须大于等于 0，当前值: {flank}")
+
     outdir.mkdir(exist_ok=True, parents=True)
 
     # 1. 生成 VCF
@@ -239,36 +432,20 @@ def main(
     chrom_df = load_chrom_sizes_from_fai(query_fai)
     sorted_bed = sort_bed_by_fai(lift_bed, chrom_df)
 
-    # 5. 写入 probe_name.id
-    probe_id_file = outdir / f"{probe_name}.id"
-    sorted_bed.to_csv(
-        probe_id_file, sep="\t", index=False, header=False, columns=["pos_id"]
-    )
-    logger.info(f"已写入 ID 文件: {probe_id_file}")
-
-    # 6. 写入 probe_name.bed
-    probe_bed = outdir / f"{probe_name}.bed"
-    sorted_bed.to_csv(
-        probe_bed, sep="\t", index=False, header=False, columns=["chrom", "start", "pos"]
-    )
-    logger.info(f"已写入 BED 文件: {probe_bed}")
-
-    # 7. 写入 probe_name.pos.tsv
-    probe_pos_file = outdir / f"{probe_name}.pos.tsv"
-    sorted_bed.to_csv(
-        probe_pos_file, sep="\t", index=False, header=False, columns=["chrom", "pos", "id"]
-    )
-    logger.info(f"已写入位点坐标文件: {probe_pos_file}")
-
-    # 8. 生成 snpcalling BED (slop + merge)
-    chrom_sizes_dict = dict(zip(chrom_df["chrom"], chrom_df["chrom_size"]))
+    # 5. 生成 snpcalling BED (slop + merge)
+    chrom_sizes_dict = dict(zip(chrom_df["chrom"], chrom_df["chrom_size"], strict=True))
     snpcalling_df = slop_and_merge(sorted_bed, chrom_sizes_dict, flank)
     snpcalling_sorted = sort_bed_by_fai(snpcalling_df, chrom_df)
-    snpcalling_bed = outdir / f"{probe_name}.snpcalling.bed"
-    snpcalling_sorted.to_csv(
-        snpcalling_bed, sep="\t", index=False, header=False, columns=["chrom", "start", "end"]
+
+    # 6. 写入输出；启用 split 时仅 BED 坐标转换到 split 基因组。
+    write_liftover_outputs(
+        sorted_bed=sorted_bed,
+        snpcalling_sorted=snpcalling_sorted,
+        outdir=outdir,
+        probe_name=probe_name,
+        split_bed=split_bed,
+        split_genome_fai=split_genome_fai,
     )
-    logger.info(f"已写入 snpcalling BED: {snpcalling_bed}")
 
 
 if __name__ == "__main__":

@@ -42,6 +42,12 @@
       "enum": ["order", "suffix"],
       "default": "suffix"
     },
+    "align_mode": {
+      "type": "string",
+      "enum": ["auto", "whole", "split"],
+      "default": "auto",
+      "description": "Alignment mode: auto chooses whole or split per chromosome, whole aligns complete chromosomes, split aligns sliding windows"
+    },
     "split_threshold": {
       "type": "integer",
       "default": 100000000,
@@ -51,6 +57,14 @@
       "type": "integer",
       "default": 10000000,
       "minimum": 1
+    },
+    "split_bed": {
+      "type": ["string", "null"],
+      "description": "Optional split.bed used to output liftover BED files in split-genome coordinates"
+    },
+    "split_genome_fai": {
+      "type": ["string", "null"],
+      "description": "Optional split genome FASTA index used to sort split BED output"
     },
     "flank": {
       "type": "integer",

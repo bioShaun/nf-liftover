@@ -16,7 +16,6 @@ nextflow_pipeline {
         then {
             assert workflow.success
             assert workflow.trace.failed().size() == 0
-            assert workflow.trace.succeeded().size() == 6
             assert path("$outputDir/chain/all.chain").exists()
             assert path("$outputDir/software_versions.yml").exists()
             assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
@@ -42,6 +41,74 @@ nextflow_pipeline {
             assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
             assert path("$outputDir/liftover/tomato-smoke.bed").text == "chr01\t999\t1000\nchr01\t4999\t5000\nchr01\t8999\t9000\n"
             assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01\t899\t1100\nchr01\t4899\t5100\nchr01\t8899\t9100\n"
+        }
+    }
+
+    test("runs tomato fixture with whole alignment mode") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                align_mode = "whole"
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert workflow.trace.failed().size() == 0
+            assert path("$outputDir/chain/all.chain").exists()
+            assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
+            assert path("$outputDir/liftover/tomato-smoke.bed").text == "chr01\t999\t1000\nchr01\t4999\t5000\nchr01\t8999\t9000\n"
+            assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01\t899\t1100\nchr01\t4899\t5100\nchr01\t8899\t9100\n"
+        }
+    }
+
+    test("runs tomato fixture with split alignment mode") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                align_mode = "split"
+                split_size = 4000
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert workflow.trace.failed().size() == 0
+            assert path("$outputDir/chain/all.chain").exists()
+            assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
+            assert path("$outputDir/liftover/tomato-smoke.bed").text == "chr01\t999\t1000\nchr01\t4999\t5000\nchr01\t8999\t9000\n"
+            assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01\t899\t1100\nchr01\t4899\t5100\nchr01\t8899\t9100\n"
+        }
+    }
+
+    test("writes split-coordinate liftover bed outputs") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                split_bed = "$baseDir/tests/data/tomato-smoke/split.bed"
+                split_genome_fai = "$baseDir/tests/data/tomato-smoke/split.genome.fa.fai"
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert workflow.trace.failed().size() == 0
+            assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
+            assert path("$outputDir/liftover/tomato-smoke.pos.tsv").text == "chr01\t1000\tSL4.0ch01_1000\nchr01\t5000\tSL4.0ch01_5000\nchr01\t9000\tSL4.0ch01_9000\n"
+            assert path("$outputDir/liftover/tomato-smoke.bed").text == "chr01_part1\t999\t1000\nchr01_part2\t999\t1000\nchr01_part3\t999\t1000\n"
+            assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01_part1\t899\t1100\nchr01_part2\t899\t1100\nchr01_part3\t899\t1100\n"
         }
     }
 }

@@ -1,5 +1,6 @@
 from pathlib import Path
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -140,6 +141,87 @@ class LiftoverByIdTests(unittest.TestCase):
             ],
         )
 
+    def test_split_bed_helpers_convert_bed_outputs_only(self):
+        module = load_module("liftover_by_id_split", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            split_bed = tmp / "split.bed"
+            split_fai = tmp / "genome.fa.fai"
+            outdir = tmp / "out"
+            outdir.mkdir()
+
+            split_bed.write_text(
+                "chr01\t0\t3000\tchr01_part1\n"
+                "chr01\t3000\t10000\tchr01_part2\n",
+                encoding="utf-8",
+            )
+            split_fai.write_text(
+                "chr01_part1\t3000\t0\t80\t81\n"
+                "chr01_part2\t7000\t0\t80\t81\n",
+                encoding="utf-8",
+            )
+
+            sorted_bed = module.pd.DataFrame(
+                [
+                    {
+                        "chrom": "chr01",
+                        "start": 999,
+                        "pos": 1000,
+                        "id": "SL4.0ch01_1000",
+                        "pos_id": "chr01_1000",
+                    },
+                    {
+                        "chrom": "chr01",
+                        "start": 4999,
+                        "pos": 5000,
+                        "id": "SL4.0ch01_5000",
+                        "pos_id": "chr01_5000",
+                    },
+                ]
+            )
+            snpcalling_sorted = module.pd.DataFrame(
+                [
+                    {"chrom": "chr01", "start": 899, "end": 1100},
+                    {"chrom": "chr01", "start": 4899, "end": 5100},
+                ]
+            )
+
+            module.write_liftover_outputs(
+                sorted_bed=sorted_bed,
+                snpcalling_sorted=snpcalling_sorted,
+                outdir=outdir,
+                probe_name="probe",
+                split_bed=split_bed,
+                split_genome_fai=split_fai,
+            )
+
+            self.assertEqual((outdir / "probe.id").read_text(encoding="utf-8"), "chr01_1000\nchr01_5000\n")
+            self.assertEqual(
+                (outdir / "probe.pos.tsv").read_text(encoding="utf-8"),
+                "chr01\t1000\tSL4.0ch01_1000\nchr01\t5000\tSL4.0ch01_5000\n",
+            )
+            self.assertEqual(
+                (outdir / "probe.bed").read_text(encoding="utf-8"),
+                "chr01_part1\t999\t1000\nchr01_part2\t1999\t2000\n",
+            )
+            self.assertEqual(
+                (outdir / "probe.snpcalling.bed").read_text(encoding="utf-8"),
+                "chr01_part1\t899\t1100\nchr01_part2\t1899\t2100\n",
+            )
+
+    def test_split_bed_helpers_infer_genome_fai_from_split_bed_directory(self):
+        module = load_module("liftover_by_id_split_infer", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            split_bed = tmp / "split.bed"
+            inferred_fai = tmp / "genome.fa.fai"
+            split_bed.write_text("chr01\t0\t10\tchr01_part1\n", encoding="utf-8")
+            inferred_fai.write_text("chr01_part1\t10\t0\t80\t81\n", encoding="utf-8")
+
+            self.assertEqual(module.resolve_split_genome_fai(split_bed, None), inferred_fai)
+
 
 class TomatoSmokeFixtureTests(unittest.TestCase):
     def test_tomato_smoke_fixture_has_pairable_fastas_and_ids(self):
@@ -200,8 +282,31 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertIn("query_fa: Path", align_nf)
         self.assertIn("paf: Path = file('all.paf')", align_nf)
         self.assertIn("chain: Path = file('all.chain')", align_nf)
+        self.assertIn("process ALIGN_WHOLE_CHROMOSOME", align_nf)
+        self.assertIn("process SPLIT_REF_CHROMOSOME", align_nf)
+        self.assertIn("process ALIGN_SPLIT_WINDOW", align_nf)
+        self.assertIn("process COMBINE_SPLIT_PAFS", align_nf)
+        self.assertIn("process COMBINE_ALL_PAFS", align_nf)
+        self.assertNotIn("while IFS=", align_nf)
+        self.assertNotIn("done <", align_nf)
         self.assertNotIn("path ref_fa", align_nf)
         self.assertNotIn("path 'all.paf', emit: paf", align_nf)
+
+    def test_liftover_process_passes_split_bed_options(self):
+        liftover_nf = (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8")
+
+        self.assertIn("record SplitLiftoverOptions", liftover_nf)
+        self.assertIn("--split-bed", liftover_nf)
+        self.assertIn("--split-genome-fai", liftover_nf)
+
+    def test_schema_defines_alignment_and_split_bed_parameters(self):
+        schema = json.loads((REPO_ROOT / "nextflow_schema.json").read_text(encoding="utf-8"))
+        properties = schema["properties"]
+
+        self.assertEqual(properties["align_mode"]["enum"], ["auto", "whole", "split"])
+        self.assertEqual(properties["align_mode"]["default"], "auto")
+        self.assertEqual(properties["split_bed"]["type"], ["string", "null"])
+        self.assertEqual(properties["split_genome_fai"]["type"], ["string", "null"])
 
     def test_main_workflow_uses_explicit_call_outputs(self):
         main_nf = (REPO_ROOT / "main.nf").read_text(encoding="utf-8")

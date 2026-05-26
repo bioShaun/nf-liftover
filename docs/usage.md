@@ -41,8 +41,11 @@ HPC 上把 `-profile standard` 改为 `-profile slurm` 或 `-profile slurm_new`�
 - `--outdir`：输出目录，默认 `results`。
 - `--mapping`：可选，两列 TSV，覆盖自动染色体对应。
 - `--pair_strategy`：自动对应策略，`suffix` 或 `order`，默认 `suffix`。
-- `--split_threshold`：超过该长度的染色体走 sliding split，默认 `100000000`。
-- `--split_size`：大染色体 sliding window 大小，默认 `10000000`。
+- `--align_mode`：比对模式，`auto`、`whole` 或 `split`，默认 `auto`；`whole` 对应旧 `align_chromosomes-whole.nf`，`split` 对应旧 `align_chromosomes.nf`。
+- `--split_threshold`：`align_mode=auto` 时，超过该长度的染色体走 sliding split，默认 `100000000`。
+- `--split_size`：split 模式 sliding window 大小，默认 `10000000`。
+- `--split_bed`：可选，4 列 `chrom, split_start, split_end, new_chrom` BED；提供后 `<probe>.bed` 与 `<probe>.snpcalling.bed` 输出 split 坐标。
+- `--split_genome_fai`：可选，split genome `.fai`，用于排序 split 坐标 BED；未提供时会尝试使用 `split_bed` 同目录下的 `genome.fa.fai`。
 - `--flank`：`snpcalling.bed` 两侧扩展长度，默认 `100`。
 
 ## 输出
@@ -57,6 +60,8 @@ HPC 上把 `-profile standard` 改为 `-profile slurm` 或 `-profile slurm_new`�
 - `software_versions.yml`
 
 其中 `<probe>` 来自输入 ID 文件名 stem，例如 `TCZZSL20K.id` 对应 `TCZZSL20K.bed`。
+
+启用 `--split_bed` 时，`<probe>.id` 与 `<probe>.pos.tsv` 仍记录 liftover 后的目标基因组原始坐标，只有 `<probe>.bed` 与 `<probe>.snpcalling.bed` 转成 split genome 坐标。
 
 ## 测试
 
