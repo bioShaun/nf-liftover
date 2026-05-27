@@ -86,9 +86,9 @@ workflow PREPARE_GENOMES {
     )
 
     emit:
-    ref_fa      = ref_indexed.map { genome -> genome.fasta }
-    ref_fai     = ref_indexed.map { genome -> genome.fai }
-    query_fa    = query_indexed.map { genome -> genome.fasta }
-    query_fai   = query_indexed.map { genome -> genome.fai }
+    ref_fa      = ref_indexed.map { genome -> genome.fasta }.first()
+    ref_fai     = ref_indexed.map { genome -> genome.fai }.first()
+    query_fa    = query_indexed.map { genome -> genome.fasta }.first()
+    query_fai   = query_indexed.map { genome -> genome.fai }.first()
     chrom_pairs = pairs
 }
