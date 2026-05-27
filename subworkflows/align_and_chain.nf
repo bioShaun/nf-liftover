@@ -275,7 +275,7 @@ workflow ALIGN_AND_CHAIN {
         }
     pair_chrom_fastas = pair_fastas.map { pf -> tuple(pf.pair_id, pf.ref_chrom_fa, pf.query_chrom_fa) }
     split_align_inputs = split_windows
-        .join(pair_chrom_fastas)
+        .join(pair_chrom_fastas, by: 0)
         .map { pair_id, ref_chr, query_chr, window_start, window_end, split_name, split_file, split_base, ref_chrom_fa, query_chrom_fa ->
             tuple(
                 pair_id,
