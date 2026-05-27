@@ -13,7 +13,13 @@ record PairFastas {
     query_chr: String
     ref_len: Integer
     ref_chrom_fa: Path
+    ref_chrom_fai: Path
     query_chrom_fa: Path
+}
+
+record PairMmi {
+    pair_id: String
+    mmi: Path
 }
 
 record PairPaf {
@@ -69,13 +75,35 @@ process EXTRACT_CHROM_FASTAS {
         query_chr: pair.query_chr,
         ref_len: pair.ref_len,
         ref_chrom_fa: file("${pair.pair_id}.ref.fa"),
+        ref_chrom_fai: file("${pair.pair_id}.ref.fa.fai"),
         query_chrom_fa: file("${pair.pair_id}.query.fa")
     )
 
     script:
     """
     samtools faidx "${ref_fa}" "${pair.ref_chr}" > "${pair.pair_id}.ref.fa"
+    samtools faidx "${pair.pair_id}.ref.fa"
     samtools faidx "${query_fa}" "${pair.query_chr}" > "${pair.pair_id}.query.fa"
+    """
+}
+
+process BUILD_QUERY_MMI {
+    tag "${pair_fastas.pair_id}"
+    label 'tool_ngs'
+    label 'split_mem'
+
+    input:
+    pair_fastas: PairFastas
+
+    output:
+    pair_mmi: PairMmi = record(
+        pair_id: pair_fastas.pair_id,
+        mmi: file("${pair_fastas.pair_id}.query.mmi")
+    )
+
+    script:
+    """
+    minimap2 -x asm5 -t ${task.cpus} -d "${pair_fastas.pair_id}.query.mmi" "${pair_fastas.query_chrom_fa}"
     """
 }
 
@@ -144,7 +172,7 @@ process ALIGN_SPLIT_WINDOW {
     stageInMode 'symlink'
 
     input:
-    tuple(pair_id: String, ref_chr: String, query_chr: String, window_start: Integer, window_end: Integer, split_name: String, split_file: String, split_base: String, ref_chrom_fa: Path, query_chrom_fa: Path)
+    tuple(pair_id: String, ref_chr: String, query_chr: String, window_start: Integer, window_end: Integer, split_name: String, split_file: String, split_base: String, ref_chrom_fa: Path, ref_chrom_fai: Path, query_mmi: Path)
 
     output:
     paf: PairPaf = record(
@@ -159,7 +187,7 @@ process ALIGN_SPLIT_WINDOW {
     samtools faidx "${ref_chrom_fa}" "${ref_chr}:${window_start}-${window_end}" \\
       | awk -v name="${split_name}" 'NR == 1 { print ">" name; next } { print }' \\
       > "${split_file}"
-    minimap2 -cx asm5 --cs -t ${task.cpus} "${query_chrom_fa}" "${split_file}" > "${split_base}.paf"
+    minimap2 -cx asm5 --cs -t ${task.cpus} "${query_mmi}" "${split_file}" > "${split_base}.paf"
     """
 }
 
@@ -181,9 +209,12 @@ process COMBINE_SPLIT_PAFS {
     )
 
     script:
-    def splitPafList = split_pafs.collect { it.toString() }.join(' ')
+    def splitPafList = split_pafs.collect { it.toString() }.sort().join('\n')
     """
-    cat ${splitPafList} > "${pair_id}.split.paf"
+cat > split_pafs.list <<'EOF'
+${splitPafList}
+EOF
+xargs cat < split_pafs.list > "${pair_id}.split.paf"
     python ${projectDir}/bin/restore_split_paf.py "${pair_id}.split.paf" "${ref_fai}" "${pair_id}.paf"
     """
 }
@@ -202,9 +233,12 @@ process COMBINE_ALL_PAFS {
     paf: Path = file('all.paf')
 
     script:
-    def pafList = paf_files.collect { it.toString() }.join(' ')
+    def pafList = paf_files.collect { it.toString() }.sort().join('\n')
     """
-    cat ${pafList} > all.paf
+cat > pafs.list <<'EOF'
+${pafList}
+EOF
+xargs cat < pafs.list > all.paf
     """
 }
 
@@ -273,10 +307,13 @@ workflow ALIGN_AND_CHAIN {
                 row[7] as String
             )
         }
-    pair_chrom_fastas = pair_fastas.map { pf -> tuple(pf.pair_id, pf.ref_chrom_fa, pf.query_chrom_fa) }
+    pair_chrom_fastas = split_pairs.map { pf -> tuple(pf.pair_id, pf.ref_chrom_fa, pf.ref_chrom_fai) }
+    pair_query_mmis = BUILD_QUERY_MMI(split_pairs)
+        .map { pm -> tuple(pm.pair_id, pm.mmi) }
     split_align_inputs = split_windows
-        .join(pair_chrom_fastas, by: 0)
-        .map { pair_id, ref_chr, query_chr, window_start, window_end, split_name, split_file, split_base, ref_chrom_fa, query_chrom_fa ->
+        .combine(pair_chrom_fastas, by: 0)
+        .combine(pair_query_mmis, by: 0)
+        .map { pair_id, ref_chr, query_chr, window_start, window_end, split_name, split_file, split_base, ref_chrom_fa, ref_chrom_fai, query_mmi ->
             tuple(
                 pair_id,
                 ref_chr,
@@ -287,7 +324,8 @@ workflow ALIGN_AND_CHAIN {
                 split_file,
                 split_base,
                 ref_chrom_fa,
-                query_chrom_fa
+                ref_chrom_fai,
+                query_mmi
             )
         }
     split_paf_groups = ALIGN_SPLIT_WINDOW(split_align_inputs)
@@ -298,7 +336,7 @@ workflow ALIGN_AND_CHAIN {
     collected_pafs = whole_pafs
         .mix(split_pafs)
         .map { pair_paf -> pair_paf.paf }
-        .collect()
+        .toSortedList { a, b -> a.name <=> b.name }
     all_paf = COMBINE_ALL_PAFS(collected_pafs)
     chain = PAF_TO_CHAIN(all_paf)
 

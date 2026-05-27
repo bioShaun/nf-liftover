@@ -75,8 +75,8 @@ workflow PREPARE_GENOMES {
     main:
     indexed_genomes = MAYBE_FAIDX(ref_input.mix(query_input))
 
-    ref_indexed = indexed_genomes.filter { genome -> genome.role == 'ref' }
-    query_indexed = indexed_genomes.filter { genome -> genome.role == 'query' }
+    ref_indexed = indexed_genomes.filter { genome -> genome.role == 'ref' }.first()
+    query_indexed = indexed_genomes.filter { genome -> genome.role == 'query' }.first()
 
     pairs = DERIVE_CHROM_PAIRS(
         ref_indexed.map { genome -> genome.fai },
@@ -86,9 +86,9 @@ workflow PREPARE_GENOMES {
     )
 
     emit:
-    ref_fa      = ref_indexed.map { genome -> genome.fasta }.first()
-    ref_fai     = ref_indexed.map { genome -> genome.fai }.first()
-    query_fa    = query_indexed.map { genome -> genome.fasta }.first()
-    query_fai   = query_indexed.map { genome -> genome.fai }.first()
+    ref_fa      = ref_indexed.map { genome -> genome.fasta }
+    ref_fai     = ref_indexed.map { genome -> genome.fai }
+    query_fa    = query_indexed.map { genome -> genome.fasta }
+    query_fai   = query_indexed.map { genome -> genome.fai }
     chrom_pairs = pairs
 }

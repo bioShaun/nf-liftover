@@ -65,12 +65,9 @@ def fetch_ref_nucleotide(ref_fa: Fasta, chrom: str, pos: int) -> str:
     return str(ref_fa[chrom][pos - 1 : pos].seq) if chrom in ref_fa else "N"
 
 
-def make_id_vcf(id_file: Path, ref_fa_path: Path, *, force: bool = False) -> Path:
+def make_id_vcf(id_file: Path, ref_fa_path: Path) -> Path:
     """根据 ID 文件生成最小 VCF，用于 transanno liftvcf 输入。"""
     id_vcf_file = Path(f"{id_file}.vcf")
-    if id_vcf_file.exists() and not force:
-        logger.info(f"VCF 文件已存在，跳过生成: {id_vcf_file}")
-        return id_vcf_file
 
     ref_fasta = Fasta(str(ref_fa_path))
     with open(id_file) as id_inf, open(id_vcf_file, "w") as vcf_out:
@@ -179,10 +176,12 @@ def slop_and_merge(
     df["end"] = df[end_col]
 
     df["start"] = (df["start"] - flank).clip(lower=0)
-    df["end"] = df.apply(
-        lambda row: min(row["end"] + flank, chrom_sizes.get(str(row["chrom"]), row["end"] + flank)),
+    expanded_end = df["end"] + flank
+    chrom_limits = df["chrom"].astype(str).map(chrom_sizes)
+    df["end"] = pd.concat(
+        [expanded_end, chrom_limits.fillna(expanded_end)],
         axis=1,
-    )
+    ).min(axis=1).astype(int)
 
     merged_rows: list[dict[str, object]] = []
     for chrom, group in df.groupby("chrom", sort=False, observed=True):
@@ -412,7 +411,7 @@ def main(
     outdir.mkdir(exist_ok=True, parents=True)
 
     # 1. 生成 VCF
-    vcf = make_id_vcf(id_file, ref_fa, force=force)
+    vcf = make_id_vcf(id_file, ref_fa)
 
     # 2. 运行 transanno liftvcf
     probe_name = id_file.stem
