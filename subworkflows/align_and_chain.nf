@@ -16,29 +16,6 @@ record PairFastas {
     query_chrom_fa: Path
 }
 
-record SplitFastas {
-    pair_id: String
-    ref_chr: String
-    query_chr: String
-    query_chrom_fa: Path
-    split_files: List<Path>
-}
-
-record SplitWindow {
-    pair_id: String
-    ref_chr: String
-    query_chr: String
-    query_chrom_fa: Path
-    split_file: Path
-}
-
-record SplitPafGroup {
-    pair_id: String
-    ref_chr: String
-    query_chr: String
-    split_pafs: List<Path>
-}
-
 record PairPaf {
     pair_id: String
     ref_chr: String
@@ -133,65 +110,81 @@ process SPLIT_REF_CHROMOSOME {
     pair_fastas: PairFastas
 
     output:
-    splits: SplitFastas = record(
-        pair_id: pair_fastas.pair_id,
-        ref_chr: pair_fastas.ref_chr,
-        query_chr: pair_fastas.query_chr,
-        query_chrom_fa: pair_fastas.query_chrom_fa,
-        split_files: files('split_fa/*')
-    )
+    plan: Path = file('windows.tsv')
 
     script:
     """
-    mkdir -p split_fa
-    seqkit sliding -W ${params.split_size} -s ${params.split_size} "${pair_fastas.ref_chrom_fa}" \\
-      | seqkit split -i --by-id-prefix "" -O split_fa/
+    : > windows.tsv
+    start=1
+    while (( start <= ${pair_fastas.ref_len} )); do
+        end=\$(( start + ${params.split_size} - 1 ))
+        if (( end > ${pair_fastas.ref_len} )); then
+            end=${pair_fastas.ref_len}
+        fi
+        split_name="${pair_fastas.ref_chr}_sliding:\${start}-\${end}"
+        split_base=\$(printf '%s' "\${split_name}" | sed 's/[^A-Za-z0-9._-]/_/g')
+        printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' \\
+          "${pair_fastas.pair_id}" \\
+          "${pair_fastas.ref_chr}" \\
+          "${pair_fastas.query_chr}" \\
+          "\${start}" \\
+          "\${end}" \\
+          "\${split_name}" \\
+          "\${split_base}.fa" \\
+          "\${split_base}" >> windows.tsv
+        start=\$(( start + ${params.split_size} ))
+    done
     """
 }
 
 process ALIGN_SPLIT_WINDOW {
-    tag "${split_window.split_file.baseName}"
+    tag "${split_base}"
     label 'tool_ngs'
     label 'large_mem'
 
     input:
-    split_window: SplitWindow
+    tuple(pair_id: String, ref_chr: String, query_chr: String, window_start: Integer, window_end: Integer, split_name: String, split_file: String, split_base: String, ref_fa: Path, query_fa: Path)
 
     output:
     paf: PairPaf = record(
-        pair_id: split_window.pair_id,
-        ref_chr: split_window.ref_chr,
-        query_chr: split_window.query_chr,
-        paf: file("${split_window.split_file.baseName}.paf")
+        pair_id: pair_id,
+        ref_chr: ref_chr,
+        query_chr: query_chr,
+        paf: file("${split_base}.paf")
     )
 
     script:
     """
-    minimap2 -cx asm5 --cs -t ${task.cpus} "${split_window.query_chrom_fa}" "${split_window.split_file}" > "${split_window.split_file.baseName}.paf"
+    samtools faidx "${ref_fa}" "${ref_chr}:${window_start}-${window_end}" \\
+      | awk -v name="${split_name}" 'NR == 1 { print ">" name; next } { print }' \\
+      > "${split_file}"
+    samtools faidx "${query_fa}" "${query_chr}" > "${pair_id}.query.fa"
+    minimap2 -cx asm5 --cs -t ${task.cpus} "${pair_id}.query.fa" "${split_file}" > "${split_base}.paf"
     """
 }
 
 process COMBINE_SPLIT_PAFS {
-    tag "${split_group.pair_id}"
+    tag "${pair_id}"
     label 'tool_py'
     label 'small_mem'
 
     input:
-    split_group: SplitPafGroup
+    tuple(pair_id: String, ref_chr: String, query_chr: String, split_pafs)
     ref_fai: Path
 
     output:
     paf: PairPaf = record(
-        pair_id: split_group.pair_id,
-        ref_chr: split_group.ref_chr,
-        query_chr: split_group.query_chr,
-        paf: file("${split_group.pair_id}.paf")
+        pair_id: pair_id,
+        ref_chr: ref_chr,
+        query_chr: query_chr,
+        paf: file("${pair_id}.paf")
     )
 
     script:
+    def splitPafList = split_pafs.collect { it.toString() }.join(' ')
     """
-    cat ${split_group.split_pafs} > "${split_group.pair_id}.split.paf"
-    python ${projectDir}/bin/restore_split_paf.py "${split_group.pair_id}.split.paf" "${ref_fai}" "${split_group.pair_id}.paf"
+    cat ${splitPafList} > "${pair_id}.split.paf"
+    python ${projectDir}/bin/restore_split_paf.py "${pair_id}.split.paf" "${ref_fai}" "${pair_id}.paf"
     """
 }
 
@@ -203,14 +196,15 @@ process COMBINE_ALL_PAFS {
     publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.paf'
 
     input:
-    paf_files: List<Path>
+    paf_files
 
     output:
     paf: Path = file('all.paf')
 
     script:
+    def pafList = paf_files.collect { it.toString() }.join(' ')
     """
-    cat ${paf_files} > all.paf
+    cat ${pafList} > all.paf
     """
 }
 
@@ -266,23 +260,23 @@ workflow ALIGN_AND_CHAIN {
     whole_pafs = ALIGN_WHOLE_CHROMOSOME(whole_pairs)
 
     split_windows = SPLIT_REF_CHROMOSOME(split_pairs)
-        .flatMap { split ->
-            split.split_files.collect { split_file ->
-                record(
-                    pair_id: split.pair_id,
-                    ref_chr: split.ref_chr,
-                    query_chr: split.query_chr,
-                    query_chrom_fa: split.query_chrom_fa,
-                    split_file: split_file
-                )
-            }
+        .splitCsv(sep: '\t', header: false)
+        .map { row ->
+            tuple(
+                row[0] as String,
+                row[1] as String,
+                row[2] as String,
+                row[3] as Integer,
+                row[4] as Integer,
+                row[5] as String,
+                row[6] as String,
+                row[7] as String
+            )
         }
-    split_paf_groups = ALIGN_SPLIT_WINDOW(split_windows)
+    split_align_inputs = split_windows.combine(ref_fa).combine(query_fa)
+    split_paf_groups = ALIGN_SPLIT_WINDOW(split_align_inputs)
         .map { split_paf -> tuple(split_paf.pair_id, split_paf.ref_chr, split_paf.query_chr, split_paf.paf) }
         .groupTuple(by: [0, 1, 2])
-        .map { pair_id, ref_chr, query_chr, split_pafs ->
-            record(pair_id: pair_id, ref_chr: ref_chr, query_chr: query_chr, split_pafs: split_pafs)
-        }
     split_pafs = COMBINE_SPLIT_PAFS(split_paf_groups, ref_fai)
 
     collected_pafs = whole_pafs
