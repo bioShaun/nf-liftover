@@ -141,9 +141,10 @@ process ALIGN_SPLIT_WINDOW {
     tag "${split_base}"
     label 'tool_ngs'
     label 'split_mem'
+    stageInMode 'symlink'
 
     input:
-    tuple(pair_id: String, ref_chr: String, query_chr: String, window_start: Integer, window_end: Integer, split_name: String, split_file: String, split_base: String, ref_fa: Path, query_fa: Path)
+    tuple(pair_id: String, ref_chr: String, query_chr: String, window_start: Integer, window_end: Integer, split_name: String, split_file: String, split_base: String, ref_chrom_fa: Path, query_chrom_fa: Path)
 
     output:
     paf: PairPaf = record(
@@ -155,11 +156,10 @@ process ALIGN_SPLIT_WINDOW {
 
     script:
     """
-    samtools faidx "${ref_fa}" "${ref_chr}:${window_start}-${window_end}" \\
+    samtools faidx "${ref_chrom_fa}" "${ref_chr}:${window_start}-${window_end}" \\
       | awk -v name="${split_name}" 'NR == 1 { print ">" name; next } { print }' \\
       > "${split_file}"
-    samtools faidx "${query_fa}" "${query_chr}" > "${pair_id}.query.fa"
-    minimap2 -cx asm5 --cs -t ${task.cpus} "${pair_id}.query.fa" "${split_file}" > "${split_base}.paf"
+    minimap2 -cx asm5 --cs -t ${task.cpus} "${query_chrom_fa}" "${split_file}" > "${split_base}.paf"
     """
 }
 
@@ -273,7 +273,23 @@ workflow ALIGN_AND_CHAIN {
                 row[7] as String
             )
         }
-    split_align_inputs = split_windows.combine(ref_fa).combine(query_fa)
+    pair_chrom_fastas = pair_fastas.map { pf -> tuple(pf.pair_id, pf.ref_chrom_fa, pf.query_chrom_fa) }
+    split_align_inputs = split_windows
+        .join(pair_chrom_fastas)
+        .map { pair_id, ref_chr, query_chr, window_start, window_end, split_name, split_file, split_base, ref_chrom_fa, query_chrom_fa ->
+            tuple(
+                pair_id,
+                ref_chr,
+                query_chr,
+                window_start,
+                window_end,
+                split_name,
+                split_file,
+                split_base,
+                ref_chrom_fa,
+                query_chrom_fa
+            )
+        }
     split_paf_groups = ALIGN_SPLIT_WINDOW(split_align_inputs)
         .map { split_paf -> tuple(split_paf.pair_id, split_paf.ref_chr, split_paf.query_chr, split_paf.paf) }
         .groupTuple(by: [0, 1, 2])
