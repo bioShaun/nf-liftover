@@ -140,7 +140,7 @@ process SPLIT_REF_CHROMOSOME {
 process ALIGN_SPLIT_WINDOW {
     tag "${split_base}"
     label 'tool_ngs'
-    label 'large_mem'
+    label 'split_mem'
 
     input:
     tuple(pair_id: String, ref_chr: String, query_chr: String, window_start: Integer, window_end: Integer, split_name: String, split_file: String, split_base: String, ref_fa: Path, query_fa: Path)
@@ -211,7 +211,7 @@ process COMBINE_ALL_PAFS {
 process PAF_TO_CHAIN {
     tag 'all_chain'
     label 'tool_ngs'
-    label 'large_mem'
+    label 'small_mem'
 
     publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.chain'
 
