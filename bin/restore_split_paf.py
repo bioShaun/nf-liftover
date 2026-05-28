@@ -36,8 +36,8 @@ def parse_sliding_query_name(name: str) -> tuple[str, int]:
     return chrom, offset
 
 
-def restore_split_paf(input_paf: Path, query_fai: Path, output_paf: Path) -> None:
-    lengths = load_fai_lengths(query_fai)
+def restore_split_paf(input_paf: Path, ref_fai: Path, output_paf: Path) -> None:
+    lengths = load_fai_lengths(ref_fai)
     output_paf.parent.mkdir(parents=True, exist_ok=True)
 
     with input_paf.open(encoding="utf-8") as inf, output_paf.open("w", encoding="utf-8") as out:
@@ -51,7 +51,7 @@ def restore_split_paf(input_paf: Path, query_fai: Path, output_paf: Path) -> Non
 
             chrom, offset = parse_sliding_query_name(fields[0])
             if chrom not in lengths:
-                raise ValueError(f"{input_paf}:{line_no}: {chrom!r} not found in {query_fai}")
+                raise ValueError(f"{input_paf}:{line_no}: {chrom!r} not found in {ref_fai}")
 
             fields[0] = chrom
             fields[1] = str(lengths[chrom])
@@ -63,14 +63,14 @@ def restore_split_paf(input_paf: Path, query_fai: Path, output_paf: Path) -> Non
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input_paf", type=Path, help="Input split-window PAF")
-    parser.add_argument("query_fai", type=Path, help="Original query FASTA index")
+    parser.add_argument("ref_fai", type=Path, help="Original reference FASTA index")
     parser.add_argument("output_paf", type=Path, help="Output restored PAF")
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
-    restore_split_paf(args.input_paf, args.query_fai, args.output_paf)
+    restore_split_paf(args.input_paf, args.ref_fai, args.output_paf)
 
 
 if __name__ == "__main__":

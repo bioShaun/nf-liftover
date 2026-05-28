@@ -14,27 +14,23 @@ process MAYBE_FAIDX {
     input:
     record(
         role: String,
-        source_fasta: String,
         fasta: Path,
-        fai_hint: String
+        fai: Path?
     )
 
     output:
     indexed: IndexedGenome = record(role: role, fasta: file(fasta.name), fai: file("${fasta.name}.fai"))
 
     script:
-    """
-    source_fai="${fai_hint}"
-    if [[ -z "\${source_fai}" ]]; then
-        source_fai="${source_fasta}.fai"
-    fi
-
-    if [[ -s "\${source_fai}" ]]; then
-        cp "\${source_fai}" "${fasta.name}.fai"
-    else
+    if (fai) {
+        """
+        cp "${fai}" "${fasta.name}.fai"
+        """
+    } else {
+        """
         samtools faidx "${fasta}"
-    fi
-    """
+        """
+    }
 }
 
 process DERIVE_CHROM_PAIRS {

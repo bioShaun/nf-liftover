@@ -34,37 +34,6 @@ process COLLECT_SOFTWARE_VERSIONS {
 }
 
 workflow {
-    if (params.help) {
-        log.info """
-        Usage:
-          nextflow run ${workflow.projectDir} \\
-            --id <chrom_pos.id> \\
-            --ref_fa <original.fa> \\
-            --query_fa <target.fa> \\
-            --outdir <results_dir> \\
-            -profile standard
-
-        Required:
-          --id        Input ID file, one chrom_pos ID per line
-          --ref_fa    Original/reference FASTA
-          --query_fa  Target/new FASTA
-
-        Optional:
-          --outdir            Output directory (default: results)
-          --ref_fai           Existing index for --ref_fa
-          --query_fai         Existing index for --query_fa
-          --mapping            Two-column chromosome mapping TSV
-          --pair_strategy      order or suffix (default: suffix)
-          --align_mode         auto, whole, or split (default: auto)
-          --split_threshold    Split chromosomes at this length (default: 100000000)
-          --split_size         Sliding window size for large chromosomes (default: 10000000)
-          --split_bed          Optional split.bed for split-coordinate BED output
-          --split_genome_fai   Optional split genome FASTA index for split BED sorting
-          --flank              snpcalling BED flank size (default: 100)
-        """.stripIndent()
-        System.exit(0)
-    }
-
     validateParameters([parameters_schema: 'nextflow_schema.json'])
     log.info paramsSummaryLog([parameters_schema: 'nextflow_schema.json'], workflow)
 
@@ -78,8 +47,8 @@ workflow {
     ))
 
     prepared = PREPARE_GENOMES(
-        channel.of(record(role: 'ref', source_fasta: params.ref_fa, fasta: file(params.ref_fa), fai_hint: params.ref_fai ?: '')),
-        channel.of(record(role: 'query', source_fasta: params.query_fa, fasta: file(params.query_fa), fai_hint: params.query_fai ?: '')),
+        channel.of(record(role: 'ref', fasta: file(params.ref_fa), fai: params.ref_fai ? file(params.ref_fai) : null)),
+        channel.of(record(role: 'query', fasta: file(params.query_fa), fai: params.query_fai ? file(params.query_fai) : null)),
         mapping_ch,
         channel.value(params.pair_strategy)
     )

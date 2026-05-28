@@ -19,6 +19,16 @@ conda activate nextflow
 
 如果 env 所在目录不同，可用 `--conda_dir` 覆盖；如果 env 名不同，可在 `nextflow.config` 的 `params.conda_envs` 中调整。
 
+## 配置初始化
+
+首次下载或在新的机器上运行时，需要从模板配置文件复制：
+
+```bash
+cp nextflow.config.example nextflow.config
+```
+
+然后在本地生成的 `nextflow.config` 中根据本机的 conda 路径调整 `conda_dir` 等参数（本地 `nextflow.config` 已加入 `.gitignore` 中，不会提交到仓库）。
+
 ## 基本运行
 
 ```bash

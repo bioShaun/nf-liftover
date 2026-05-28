@@ -251,19 +251,21 @@ def split_bed_dataframe(
     start_col: str,
     end_col: str,
 ) -> pd.DataFrame:
-    """将 query genome BED 坐标映射到 split genome 坐标。"""
+    """将 query genome BED 坐标映射到 split genome 坐标，正确处理跨边界重叠区间并进行 clamp。"""
     source_df = bed_df.copy()
     source_df["chrom"] = source_df["chrom"].astype(str)
     source_df["start"] = pd.to_numeric(source_df[start_col], errors="raise").astype(int)
     source_df["end"] = pd.to_numeric(source_df[end_col], errors="raise").astype(int)
 
     merge_df = source_df[["chrom", "start", "end"]].merge(split_bed_df, on="chrom")
-    merge_df = merge_df[
-        (merge_df["start"] >= merge_df["split_start"])
-        & (merge_df["start"] < merge_df["split_end"])
-    ].copy()
-    merge_df["new_start"] = (merge_df["start"] - merge_df["split_start"]).astype(int)
-    merge_df["new_end"] = (merge_df["end"] - merge_df["split_start"]).astype(int)
+
+    merge_df["overlap_start"] = merge_df[["start", "split_start"]].max(axis=1)
+    merge_df["overlap_end"] = merge_df[["end", "split_end"]].min(axis=1)
+
+    merge_df = merge_df[merge_df["overlap_start"] < merge_df["overlap_end"]].copy()
+
+    merge_df["new_start"] = (merge_df["overlap_start"] - merge_df["split_start"]).astype(int)
+    merge_df["new_end"] = (merge_df["overlap_end"] - merge_df["split_start"]).astype(int)
     return merge_df[["new_chrom", "new_start", "new_end"]]
 
 

@@ -10,7 +10,6 @@ plugins {
 }
 
 params {
-    help            = false
     id              = null
     ref_fa          = null
     query_fa        = null
@@ -26,7 +25,9 @@ params {
     split_genome_fai = null
     flank            = 100
 
+    // Path to the base conda/mamba installation
     conda_dir = '/project/software/miniforge3'
+    // Mapping of labels to environment directory names
     conda_envs = [
         ngs: 'bioinfo',
         py : 'py-13',
@@ -35,7 +36,6 @@ params {
 
 includeConfig 'conf/base.config'
 includeConfig 'conf/conda.config'
-includeConfig 'conf/slurm.config'
 
 conda {
     enabled  = true
@@ -44,4 +44,41 @@ conda {
 
 process {
     shell = ['/bin/bash', '-euo', 'pipefail']
+}
+
+profiles {
+    standard {
+        process.executor = 'local'
+    }
+
+    slurm {
+        includeConfig 'conf/slurm.config'
+    }
+
+    slurm_new {
+        includeConfig 'conf/slurm.config'
+        process.queue    = 'cae'
+    }
+
+    test {
+        process.executor = 'local'
+        includeConfig 'conf/test.config'
+    }
+}
+
+// Observability and reporting outputs
+timeline {
+    enabled = true
+    file    = "${params.outdir}/pipeline_info/execution_timeline.html"
+}
+
+report {
+    enabled = true
+    file    = "${params.outdir}/pipeline_info/execution_report.html"
+}
+
+trace {
+    enabled  = true
+    overwrite = true
+    file     = "${params.outdir}/pipeline_info/execution_trace.txt"
 }

@@ -73,16 +73,16 @@ class RestoreSplitPafTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             split_paf = tmp / "split.paf"
-            fai = tmp / "query.fa.fai"
+            ref_fai = tmp / "ref.fa.fai"
             out = tmp / "restored.paf"
 
-            fai.write_text("SL4.0ch01\t100000\t0\t80\t81\n", encoding="utf-8")
+            ref_fai.write_text("SL4.0ch01\t100000\t0\t80\t81\n", encoding="utf-8")
             split_paf.write_text(
                 "SL4.0ch01_sliding:10001-20000\t10000\t5\t20\t+\tla2093.chr01\t120000\t30\t45\t15\t15\t60\tcs:Z::15\n",
                 encoding="utf-8",
             )
 
-            module.restore_split_paf(split_paf, fai, out)
+            module.restore_split_paf(split_paf, ref_fai, out)
 
             fields = out.read_text(encoding="utf-8").strip().split("\t")
             self.assertEqual(fields[:4], ["SL4.0ch01", "100000", "10005", "10020"])
@@ -221,6 +221,29 @@ class LiftoverByIdTests(unittest.TestCase):
             inferred_fai.write_text("chr01_part1\t10\t0\t80\t81\n", encoding="utf-8")
 
             self.assertEqual(module.resolve_split_genome_fai(split_bed, None), inferred_fai)
+
+    def test_split_bed_dataframe_handles_boundary_overlaps_with_clamping(self):
+        module = load_module("liftover_by_id_split_overlap", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        split_bed_df = module.pd.DataFrame(
+            [
+                {"chrom": "chr01", "split_start": 0, "split_end": 100, "new_chrom": "chr01_part1"},
+                {"chrom": "chr01", "split_start": 100, "split_end": 200, "new_chrom": "chr01_part2"},
+            ]
+        )
+
+        bed_df = module.pd.DataFrame(
+            [
+                {"chrom": "chr01", "start": 90, "pos": 110},
+            ]
+        )
+
+        split_df = module.split_bed_dataframe(bed_df, split_bed_df, start_col="start", end_col="pos")
+        records = split_df.to_dict(orient="records")
+
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0], {"new_chrom": "chr01_part1", "new_start": 90, "new_end": 100})
+        self.assertEqual(records[1], {"new_chrom": "chr01_part2", "new_start": 0, "new_end": 10})
 
 
 class TomatoSmokeFixtureTests(unittest.TestCase):
