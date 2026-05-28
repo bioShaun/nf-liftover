@@ -36,6 +36,7 @@ params {
 
 includeConfig 'conf/base.config'
 includeConfig 'conf/conda.config'
+includeConfig 'conf/modules.config'
 
 conda {
     enabled  = true

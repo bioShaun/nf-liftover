@@ -275,7 +275,11 @@ class TomatoSmokeFixtureTests(unittest.TestCase):
 class NextflowTypedMigrationTests(unittest.TestCase):
     def test_prepare_genomes_uses_records_for_high_risk_channel_shapes(self):
         main_nf = (REPO_ROOT / "main.nf").read_text(encoding="utf-8")
-        prepare_nf = (REPO_ROOT / "subworkflows" / "prepare_genomes.nf").read_text(encoding="utf-8")
+        prepare_nf = (
+            (REPO_ROOT / "subworkflows" / "prepare_genomes.nf").read_text(encoding="utf-8") + "\n" +
+            (REPO_ROOT / "modules" / "local" / "maybe_faidx.nf").read_text(encoding="utf-8") + "\n" +
+            (REPO_ROOT / "modules" / "local" / "derive_chrom_pairs.nf").read_text(encoding="utf-8")
+        )
 
         self.assertIn("record(role: 'ref'", main_nf)
         self.assertIn("record(role: 'query'", main_nf)
@@ -288,7 +292,10 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertNotIn("tuple val(has_mapping), path(mapping_file)", prepare_nf)
 
     def test_liftover_process_uses_typed_inputs_and_outputs(self):
-        liftover_nf = (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8")
+        liftover_nf = (
+            (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8") + "\n" +
+            (REPO_ROOT / "modules" / "local" / "liftover_by_id.nf").read_text(encoding="utf-8")
+        )
 
         self.assertIn("nextflow.enable.types = true", liftover_nf)
         self.assertIn("id_file: Path", liftover_nf)
@@ -298,7 +305,10 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertNotIn("path 'out/*', emit: files", liftover_nf)
 
     def test_align_and_chain_process_uses_typed_inputs_and_outputs(self):
-        align_nf = (REPO_ROOT / "subworkflows" / "align_and_chain.nf").read_text(encoding="utf-8")
+        modules_content = ""
+        for name in ["build_align_pairs", "extract_chrom_fastas", "build_query_mmi", "align_whole_chromosome", "split_ref_chromosome", "align_split_window", "combine_split_pafs", "combine_all_pafs", "paf_to_chain"]:
+            modules_content += (REPO_ROOT / "modules" / "local" / f"{name}.nf").read_text(encoding="utf-8") + "\n"
+        align_nf = (REPO_ROOT / "subworkflows" / "align_and_chain.nf").read_text(encoding="utf-8") + "\n" + modules_content
 
         self.assertIn("nextflow.enable.types = true", align_nf)
         self.assertIn("ref_fa: Path", align_nf)
@@ -316,7 +326,10 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertNotIn("path 'all.paf', emit: paf", align_nf)
 
     def test_liftover_process_passes_split_bed_options(self):
-        liftover_nf = (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8")
+        liftover_nf = (
+            (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8") + "\n" +
+            (REPO_ROOT / "modules" / "local" / "liftover_by_id.nf").read_text(encoding="utf-8")
+        )
 
         self.assertIn("record SplitLiftoverOptions", liftover_nf)
         self.assertIn("split_bed: Path?", liftover_nf)
@@ -330,8 +343,15 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertIn("--split-genome-fai", liftover_nf)
 
     def test_processes_use_stage_aliases_for_same_named_inputs(self):
-        prepare_nf = (REPO_ROOT / "subworkflows" / "prepare_genomes.nf").read_text(encoding="utf-8")
-        align_nf = (REPO_ROOT / "subworkflows" / "align_and_chain.nf").read_text(encoding="utf-8")
+        prepare_nf = (
+            (REPO_ROOT / "subworkflows" / "prepare_genomes.nf").read_text(encoding="utf-8") + "\n" +
+            (REPO_ROOT / "modules" / "local" / "maybe_faidx.nf").read_text(encoding="utf-8") + "\n" +
+            (REPO_ROOT / "modules" / "local" / "derive_chrom_pairs.nf").read_text(encoding="utf-8")
+        )
+        modules_content = ""
+        for name in ["build_align_pairs", "extract_chrom_fastas", "build_query_mmi", "align_whole_chromosome", "split_ref_chromosome", "align_split_window", "combine_split_pafs", "combine_all_pafs", "paf_to_chain"]:
+            modules_content += (REPO_ROOT / "modules" / "local" / f"{name}.nf").read_text(encoding="utf-8") + "\n"
+        align_nf = (REPO_ROOT / "subworkflows" / "align_and_chain.nf").read_text(encoding="utf-8") + "\n" + modules_content
 
         self.assertIn("stageAs ref_fai, 'ref.fa.fai'", prepare_nf)
         self.assertIn("stageAs query_fai, 'query.fa.fai'", prepare_nf)

@@ -111,4 +111,33 @@ nextflow_pipeline {
             assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01_part1\t899\t1100\nchr01_part2\t899\t1100\nchr01_part3\t899\t1100\n"
         }
     }
+
+    test("runs tomato fixture in stub mode") {
+        options "-stub"
+
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                align_mode = "split"
+                split_size = 4000
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert workflow.trace.failed().size() == 0
+            def taskNames = workflow.trace.tasks()*.name
+            assert taskNames.any { it.contains("ALIGN_AND_CHAIN:EXTRACT_CHROM_FASTAS") }
+            assert taskNames.any { it.contains("ALIGN_AND_CHAIN:BUILD_QUERY_MMI") }
+            assert taskNames.any { it.contains("ALIGN_AND_CHAIN:SPLIT_REF_CHROMOSOME") }
+            assert taskNames.any { it.contains("ALIGN_AND_CHAIN:ALIGN_SPLIT_WINDOW") }
+            assert taskNames.any { it.contains("ALIGN_AND_CHAIN:COMBINE_SPLIT_PAFS") }
+            assert path("$outputDir/chain/all.chain").exists()
+            assert path("$outputDir/software_versions.yml").exists()
+        }
+    }
 }

@@ -5,33 +5,8 @@ nextflow.enable.types = true
 include { PREPARE_GENOMES } from './subworkflows/prepare_genomes'
 include { ALIGN_AND_CHAIN  } from './subworkflows/align_and_chain'
 include { LIFTOVER         } from './subworkflows/liftover'
+include { COLLATE_VERSIONS } from './modules/local/collate_versions'
 include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
-
-process COLLECT_SOFTWARE_VERSIONS {
-    tag 'software_versions'
-    label 'tool_py_ngs'
-    label 'small_mem'
-
-    publishDir "${params.outdir}", mode: 'copy'
-
-    input:
-    nextflow_version: String
-
-    output:
-    versions: Path = file('software_versions.yml')
-
-    script:
-    """
-    {
-      echo 'nextflow: "${nextflow_version}"'
-      echo "python: \\"\$(python --version 2>&1 | awk '{ print \$2 }')\\""
-      echo "samtools: \\"\$(samtools --version | awk 'NR == 1 { print \$2 }')\\""
-      echo "seqkit: \\"\$(seqkit version | awk '{ print \$2 }')\\""
-      echo "minimap2: \\"\$(minimap2 --version)\\""
-      echo "transanno: \\"\$(transanno --version | awk '{ print \$2 }')\\""
-    } > software_versions.yml
-    """
-}
 
 workflow {
     validateParameters([parameters_schema: 'nextflow_schema.json'])
@@ -61,7 +36,7 @@ workflow {
         prepared.chrom_pairs
     )
 
-    LIFTOVER(
+    lifted = LIFTOVER(
         channel.value(file(params.id)),
         aligned.chain,
         prepared.ref_fa,
@@ -70,5 +45,10 @@ workflow {
         split_liftover_ch
     )
 
-    COLLECT_SOFTWARE_VERSIONS(channel.value(workflow.nextflow.version.toString()))
+    ch_versions = prepared.versions
+        .mix(aligned.versions)
+        .mix(lifted.versions)
+        .collect()
+
+    COLLATE_VERSIONS(workflow.nextflow.version.toString(), ch_versions)
 }
