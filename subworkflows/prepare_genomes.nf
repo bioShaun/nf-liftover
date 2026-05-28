@@ -50,15 +50,20 @@ process DERIVE_CHROM_PAIRS {
     )
     strategy: String
 
+    stage:
+    stageAs ref_fai, 'ref.fa.fai'
+    stageAs query_fai, 'query.fa.fai'
+    stageAs mapping_file, 'chrom_mapping.tsv'
+
     output:
     pairs: Path = file('chrom_pairs.tsv')
 
     script:
-    def mapping_args = mapping_file ? "--mapping \"${mapping_file}\"" : ''
+    def mapping_args = mapping_file ? "--mapping chrom_mapping.tsv" : ''
     """
     python ${projectDir}/bin/derive_chrom_pairs.py \\
-      --ref-fai "${ref_fai}" \\
-      --query-fai "${query_fai}" \\
+      --ref-fai ref.fa.fai \\
+      --query-fai query.fa.fai \\
       --output chrom_pairs.tsv \\
       --strategy "${strategy}" \\
       ${mapping_args}

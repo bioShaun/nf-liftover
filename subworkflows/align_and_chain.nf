@@ -38,6 +38,10 @@ process BUILD_ALIGN_PAIRS {
     chrom_pairs: Path
     ref_fai: Path
 
+    stage:
+    stageAs chrom_pairs, 'chrom_pairs.tsv'
+    stageAs ref_fai, 'ref.fa.fai'
+
     output:
     pairs: Path = file('align_pairs.tsv')
 
@@ -54,7 +58,7 @@ process BUILD_ALIGN_PAIRS {
         pair_id = \$1 "_vs_" \$2
         gsub(/[^A-Za-z0-9._-]/, "_", pair_id)
         print pair_id, \$1, \$2, lengths[\$1]
-      }' "${ref_fai}" "${chrom_pairs}" > align_pairs.tsv
+      }' ref.fa.fai chrom_pairs.tsv > align_pairs.tsv
     """
 }
 
@@ -67,6 +71,10 @@ process EXTRACT_CHROM_FASTAS {
     ref_fa: Path
     query_fa: Path
     pair: AlignPair
+
+    stage:
+    stageAs ref_fa, 'ref_genome.fa'
+    stageAs query_fa, 'query_genome.fa'
 
     output:
     pair_fastas: PairFastas = record(
@@ -81,9 +89,9 @@ process EXTRACT_CHROM_FASTAS {
 
     script:
     """
-    samtools faidx "${ref_fa}" "${pair.ref_chr}" > "${pair.pair_id}.ref.fa"
+    samtools faidx ref_genome.fa "${pair.ref_chr}" > "${pair.pair_id}.ref.fa"
     samtools faidx "${pair.pair_id}.ref.fa"
-    samtools faidx "${query_fa}" "${pair.query_chr}" > "${pair.pair_id}.query.fa"
+    samtools faidx query_genome.fa "${pair.query_chr}" > "${pair.pair_id}.query.fa"
     """
 }
 

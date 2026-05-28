@@ -18,22 +18,32 @@ process LIFTOVER_BY_ID {
     ref_fa: Path
     query_fa: Path
     query_fai: Path
-    split_options: SplitLiftoverOptions
+    record(
+        split_bed: Path?,
+        split_genome_fai: Path?
+    )
+
+    stage:
+    stageAs ref_fa, 'liftover_ref.fa'
+    stageAs query_fa, 'liftover_query.fa'
+    stageAs query_fai, 'liftover_query.fa.fai'
+    stageAs split_bed, 'split_liftover.bed'
+    stageAs split_genome_fai, 'split_liftover.genome.fai'
 
     output:
     files = files('out/*')
 
     script:
-    def splitBedArg = split_options.split_bed ? "--split-bed \"${split_options.split_bed}\"" : ''
-    def splitGenomeFaiArg = split_options.split_genome_fai ? "--split-genome-fai \"${split_options.split_genome_fai}\"" : ''
+    def splitBedArg = split_bed ? "--split-bed split_liftover.bed" : ''
+    def splitGenomeFaiArg = split_genome_fai ? "--split-genome-fai split_liftover.genome.fai" : ''
     """
     mkdir -p out
 
     python ${projectDir}/bin/liftover_by_id.py \\
       "${id_file}" \\
       "${chain}" \\
-      "${ref_fa}" \\
-      "${query_fa}" \\
+      liftover_ref.fa \\
+      liftover_query.fa \\
       out \\
       --flank ${params.flank} \\
       ${splitBedArg} \\

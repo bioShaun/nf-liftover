@@ -296,8 +296,26 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         liftover_nf = (REPO_ROOT / "subworkflows" / "liftover.nf").read_text(encoding="utf-8")
 
         self.assertIn("record SplitLiftoverOptions", liftover_nf)
+        self.assertIn("split_bed: Path?", liftover_nf)
+        self.assertIn("split_genome_fai: Path?", liftover_nf)
+        self.assertIn("stageAs ref_fa, 'liftover_ref.fa'", liftover_nf)
+        self.assertIn("stageAs query_fa, 'liftover_query.fa'", liftover_nf)
+        self.assertIn("stageAs query_fai, 'liftover_query.fa.fai'", liftover_nf)
+        self.assertIn("stageAs split_bed, 'split_liftover.bed'", liftover_nf)
+        self.assertIn("stageAs split_genome_fai, 'split_liftover.genome.fai'", liftover_nf)
         self.assertIn("--split-bed", liftover_nf)
         self.assertIn("--split-genome-fai", liftover_nf)
+
+    def test_processes_use_stage_aliases_for_same_named_inputs(self):
+        prepare_nf = (REPO_ROOT / "subworkflows" / "prepare_genomes.nf").read_text(encoding="utf-8")
+        align_nf = (REPO_ROOT / "subworkflows" / "align_and_chain.nf").read_text(encoding="utf-8")
+
+        self.assertIn("stageAs ref_fai, 'ref.fa.fai'", prepare_nf)
+        self.assertIn("stageAs query_fai, 'query.fa.fai'", prepare_nf)
+        self.assertIn("stageAs chrom_pairs, 'chrom_pairs.tsv'", align_nf)
+        self.assertIn("stageAs ref_fai, 'ref.fa.fai'", align_nf)
+        self.assertIn("stageAs ref_fa, 'ref_genome.fa'", align_nf)
+        self.assertIn("stageAs query_fa, 'query_genome.fa'", align_nf)
 
     def test_schema_defines_alignment_and_split_bed_parameters(self):
         schema = json.loads((REPO_ROOT / "nextflow_schema.json").read_text(encoding="utf-8"))
