@@ -1,4 +1,5 @@
 from pathlib import Path
+import gzip
 import importlib.util
 import json
 import sys
@@ -244,6 +245,116 @@ class LiftoverByIdTests(unittest.TestCase):
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0], {"new_chrom": "chr01_part1", "new_start": 90, "new_end": 100})
         self.assertEqual(records[1], {"new_chrom": "chr01_part2", "new_start": 0, "new_end": 10})
+
+
+class MergeBlastRescueTests(unittest.TestCase):
+    def test_merges_only_strict_blast_rescue_and_reports_status(self):
+        module = load_module("merge_blast_rescue", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            id_file = tmp / "panel.id"
+            transanno_pos = tmp / "panel.pos.tsv"
+            rejected_vcf = tmp / "rejected.panel.id.vcf.gz"
+            selection = tmp / "blast.selection.tsv"
+            mapping = tmp / "mapping.tsv"
+            query_fai = tmp / "query.fa.fai"
+            rescue_out = tmp / "blast_rescue"
+
+            id_file.write_text("src1_10\nsrc1_20\nsrc1_30\nsrc1_40\nsrc1_50\n", encoding="utf-8")
+            transanno_pos.write_text("chr1\t101\tsrc1_10\n", encoding="utf-8")
+            with gzip.open(rejected_vcf, "wt", encoding="utf-8") as handle:
+                handle.write("##fileformat=VCFv4.2\n")
+                for marker_id, reason in [
+                    ("src1_20", "NO_CHAIN"),
+                    ("src1_30", "NO_CHAIN"),
+                    ("src1_40", "MULTIMAP"),
+                    ("src1_50", "UNEXPECTED_REF"),
+                ]:
+                    handle.write(f"src1\t1\t{marker_id}\tA\t.\t.\t.\tFAILED_REASON={reason}\n")
+            selection.write_text(
+                "id\tnew_id\tchrom\tpos\tstrand\talleles\trank\tbitscore\tmatch_ratio\talign_len\t"
+                "informative_len\tn_count\tmismatches\tgap_opens\tchr_map_status\tselection_reason\n"
+                "src1_20\tchr1_200\tchr1\t200\t+\t-/-\t1\t100\t0.97\t100\t100\t0\t0\t0\tmatched\tok\n"
+                "src1_30\tchr1_300\tchr1\t300\t+\t-/-\t1\t90\t0.90\t90\t100\t0\t0\t0\tmatched\tlow\n"
+                "src1_40\tchr1_400\tchr1\t400\t+\t-/-\t1\t80\t0.99\t99\t100\t0\t0\t0\tmatched\ttie1\n"
+                "src1_40\tchr1_401\tchr1\t401\t+\t-/-\t2\t80\t0.99\t99\t100\t0\t0\t0\tmatched\ttie2\n"
+                "src1_50\tchr2_500\tchr2\t500\t+\t-/-\t1\t100\t0.99\t99\t100\t0\t0\t0\tfallback\tfallback\n",
+                encoding="utf-8",
+            )
+            mapping.write_text("src1\tchr1\n", encoding="utf-8")
+            query_fai.write_text("chr1\t1000\t0\t80\t81\nchr2\t1000\t0\t80\t81\n", encoding="utf-8")
+
+            module.merge_blast_rescue(
+                id_file=id_file,
+                transanno_pos=transanno_pos,
+                rejected_vcf=rejected_vcf,
+                blast_selection=selection,
+                mapping_tsv=mapping,
+                query_fai=query_fai,
+                outdir=rescue_out,
+                panel="panel",
+                flank=10,
+            )
+
+            self.assertEqual((rescue_out / "panel.id").read_text(encoding="utf-8"), "chr1_101\nchr1_200\n")
+            self.assertEqual(
+                (rescue_out / "panel.bed").read_text(encoding="utf-8"),
+                "chr1\t100\t101\nchr1\t199\t200\n",
+            )
+            self.assertEqual(
+                (rescue_out / "panel.snpcalling.bed").read_text(encoding="utf-8"),
+                "chr1\t90\t111\nchr1\t189\t210\n",
+            )
+
+            summary = module.pd.read_table(rescue_out / "panel.summary.tsv")
+            self.assertEqual(summary.set_index("metric")["count"].to_dict(), {
+                "transanno_success": 1,
+                "blast_rescue": 1,
+                "failed": 3,
+            })
+            failed_reasons = (rescue_out / "panel.failed-reasons.tsv").read_text(encoding="utf-8")
+            self.assertIn("NO_CHAIN;BLAST_LOW_MATCH_RATIO", failed_reasons)
+            self.assertIn("MULTIMAP;BLAST_TIED_TOP_HIT", failed_reasons)
+            self.assertIn("UNEXPECTED_REF;BLAST_CHR_MAP_NOT_MATCHED+BLAST_TARGET_CHROM_NOT_IN_MAPPING", failed_reasons)
+
+    def test_split_output_keeps_panel_filenames_in_rescue_outdir(self):
+        module = load_module("merge_blast_rescue_split", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            outdir = tmp / "rescue"
+            query_fai = tmp / "query.fa.fai"
+            split_bed = tmp / "split.bed"
+            split_fai = tmp / "split.fa.fai"
+
+            query_fai.write_text("chr1\t1000\t0\t80\t81\n", encoding="utf-8")
+            split_bed.write_text("chr1\t0\t150\tchr1a\nchr1\t150\t1000\tchr1b\n", encoding="utf-8")
+            split_fai.write_text("chr1a\t150\t0\t80\t81\nchr1b\t850\t0\t80\t81\n", encoding="utf-8")
+            combined = module.pd.DataFrame(
+                [
+                    {"chrom": "chr1", "pos": 101, "id": "src1_10", "method": "transanno"},
+                    {"chrom": "chr1", "pos": 200, "id": "src1_20", "method": "blast_rescue"},
+                ]
+            )
+
+            module.write_combined_outputs(
+                combined,
+                query_fai,
+                outdir,
+                "panel",
+                flank=10,
+                split_bed=split_bed,
+                split_genome_fai=split_fai,
+            )
+
+            self.assertEqual((outdir / "panel.id").read_text(encoding="utf-8"), "chr1_101\nchr1_200\n")
+            self.assertEqual((outdir / "panel.bed").read_text(encoding="utf-8"), "chr1a\t100\t101\nchr1b\t49\t50\n")
+            self.assertEqual(
+                (outdir / "panel.snpcalling.bed").read_text(encoding="utf-8"),
+                "chr1a\t90\t111\nchr1b\t39\t60\n",
+            )
+            self.assertTrue((outdir / "panel.method.tsv").is_file())
 
 
 class TomatoSmokeFixtureTests(unittest.TestCase):
