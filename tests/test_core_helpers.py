@@ -411,6 +411,7 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertIn("nextflow.enable.types = true", liftover_nf)
         self.assertIn("id_file: Path", liftover_nf)
         self.assertIn("chain: Path", liftover_nf)
+        self.assertIn("ref_fai: Path", liftover_nf)
         self.assertIn("files = files('out/*')", liftover_nf)
         self.assertNotIn("path id_file", liftover_nf)
         self.assertNotIn("path 'out/*', emit: files", liftover_nf)
@@ -447,11 +448,25 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertIn("split_genome_fai: Path?", liftover_nf)
         self.assertIn("stageAs ref_fa, 'liftover_ref.fa'", liftover_nf)
         self.assertIn("stageAs query_fa, 'liftover_query.fa'", liftover_nf)
+        self.assertIn("stageAs ref_fai, 'liftover_ref.fa.fai'", liftover_nf)
         self.assertIn("stageAs query_fai, 'liftover_query.fa.fai'", liftover_nf)
         self.assertIn("stageAs split_bed, 'split_liftover.bed'", liftover_nf)
         self.assertIn("stageAs split_genome_fai, 'split_liftover.genome.fai'", liftover_nf)
         self.assertIn("--split-bed", liftover_nf)
         self.assertIn("--split-genome-fai", liftover_nf)
+
+    def test_vcf_liftover_process_is_available(self):
+        main_nf = (REPO_ROOT / "main.nf").read_text(encoding="utf-8")
+        vcf_nf = (REPO_ROOT / "modules" / "local" / "liftover_vcf.nf").read_text(encoding="utf-8")
+
+        self.assertIn("params.vcf", main_nf)
+        self.assertIn("include { LIFTOVER_VCF", main_nf)
+        self.assertIn("process LIFTOVER_VCF", vcf_nf)
+        self.assertIn("vcf_file: Path", vcf_nf)
+        self.assertIn("transanno liftvcf", vcf_nf)
+        self.assertIn("tabix -f -p vcf", vcf_nf)
+        self.assertIn("stageAs ref_fai, 'liftover_ref.fa.fai'", vcf_nf)
+        self.assertIn("stageAs query_fai, 'liftover_query.fa.fai'", vcf_nf)
 
     def test_processes_use_stage_aliases_for_same_named_inputs(self):
         prepare_nf = (
@@ -479,6 +494,8 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertEqual(properties["align_mode"]["default"], "auto")
         self.assertEqual(properties["split_bed"]["type"], ["string", "null"])
         self.assertEqual(properties["split_genome_fai"]["type"], ["string", "null"])
+        self.assertEqual(properties["id"]["type"], ["string", "null"])
+        self.assertEqual(properties["vcf"]["type"], ["string", "null"])
 
     def test_main_workflow_uses_explicit_call_outputs(self):
         main_nf = (REPO_ROOT / "main.nf").read_text(encoding="utf-8")

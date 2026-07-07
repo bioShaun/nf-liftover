@@ -10,8 +10,12 @@
       "default": false
     },
     "id": {
-      "type": "string",
-      "description": "Input chrom_pos ID file"
+      "type": ["string", "null"],
+      "description": "Input chrom_pos ID file. Provide exactly one of id or vcf."
+    },
+    "vcf": {
+      "type": ["string", "null"],
+      "description": "Input VCF/VCF.GZ/BCF file. Provide exactly one of id or vcf."
     },
     "ref_fa": {
       "type": "string",
@@ -92,6 +96,6 @@
       "default": "48.h"
     }
   },
-  "required": ["id", "ref_fa", "query_fa"],
+  "required": ["ref_fa", "query_fa"],
   "additionalProperties": true
 }

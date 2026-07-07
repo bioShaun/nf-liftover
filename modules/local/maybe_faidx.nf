@@ -25,7 +25,11 @@ process MAYBE_FAIDX {
     script:
     if (fai) {
         """
-        cp "${fai}" "${fasta.name}.fai"
+        SRC_REAL=\$(readlink -f "${fai}")
+        DST_REAL=\$(readlink -f "${fasta.name}.fai")
+        if [ "\$SRC_REAL" != "\$DST_REAL" ]; then
+            cp -L "${fai}" "${fasta.name}.fai"
+        fi
         cat <<-END > versions.yml
         "${task.process}":
             samtools: \$(samtools --version | head -n 1 | awk '{print \$2}')

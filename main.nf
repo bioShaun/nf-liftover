@@ -5,12 +5,25 @@ nextflow.enable.types = true
 include { PREPARE_GENOMES } from './subworkflows/prepare_genomes'
 include { ALIGN_AND_CHAIN  } from './subworkflows/align_and_chain'
 include { LIFTOVER         } from './subworkflows/liftover'
+include { LIFTOVER_VCF     } from './modules/local/liftover_vcf'
 include { COLLATE_VERSIONS } from './modules/local/collate_versions'
-include { validateParameters; paramsSummaryLog } from 'plugin/nf-schema'
+
+def validateRequiredParams() {
+    ['ref_fa', 'query_fa'].each { name ->
+        if (!params[name]) {
+            throw new IllegalArgumentException("Missing required parameter --${name}")
+        }
+    }
+    if (!params.id && !params.vcf) {
+        throw new IllegalArgumentException("Missing required input: provide --id or --vcf")
+    }
+    if (params.id && params.vcf) {
+        throw new IllegalArgumentException("Provide only one input type: --id or --vcf")
+    }
+}
 
 workflow {
-    validateParameters([parameters_schema: 'nextflow_schema.json'])
-    log.info paramsSummaryLog([parameters_schema: 'nextflow_schema.json'], workflow)
+    validateRequiredParams()
 
     mapping_ch = params.mapping
         ? channel.value(record(mapping_file: file(params.mapping)))
@@ -36,14 +49,26 @@ workflow {
         prepared.chrom_pairs
     )
 
-    lifted = LIFTOVER(
-        channel.value(file(params.id)),
-        aligned.chain,
-        prepared.ref_fa,
-        prepared.query_fa,
-        prepared.query_fai,
-        split_liftover_ch
-    )
+    if (params.vcf) {
+        lifted = LIFTOVER_VCF(
+            channel.value(file(params.vcf)),
+            aligned.chain,
+            prepared.ref_fa,
+            prepared.query_fa,
+            prepared.ref_fai,
+            prepared.query_fai
+        )
+    } else {
+        lifted = LIFTOVER(
+            channel.value(file(params.id)),
+            aligned.chain,
+            prepared.ref_fa,
+            prepared.query_fa,
+            prepared.ref_fai,
+            prepared.query_fai,
+            split_liftover_ch
+        )
+    }
 
     ch_versions = prepared.versions
         .mix(aligned.versions)
