@@ -25,11 +25,15 @@ process EXTRACT_CHROM_FASTAS {
     input:
     ref_fa: Path
     query_fa: Path
+    ref_fai: Path
+    query_fai: Path
     pair: AlignPair
 
     stage:
     stageAs ref_fa, 'ref_genome.fa'
     stageAs query_fa, 'query_genome.fa'
+    stageAs ref_fai, 'ref_genome.fa.fai'
+    stageAs query_fai, 'query_genome.fa.fai'
 
     output:
     pair_fastas: PairFastas = record(

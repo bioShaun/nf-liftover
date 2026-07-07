@@ -61,7 +61,7 @@ workflow ALIGN_AND_CHAIN {
             )
         }
 
-    pair_fastas_out = EXTRACT_CHROM_FASTAS(ref_fa, query_fa, align_pairs)
+    pair_fastas_out = EXTRACT_CHROM_FASTAS(ref_fa, query_fa, ref_fai, query_fai, align_pairs)
     pair_fastas = pair_fastas_out.pair_fastas
 
     whole_pairs = pair_fastas.filter { pair ->

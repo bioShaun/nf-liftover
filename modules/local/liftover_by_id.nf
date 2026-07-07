@@ -12,6 +12,7 @@ process LIFTOVER_BY_ID {
     chain: Path
     ref_fa: Path
     query_fa: Path
+    ref_fai: Path
     query_fai: Path
     record(
         split_bed: Path?,
@@ -21,6 +22,7 @@ process LIFTOVER_BY_ID {
     stage:
     stageAs ref_fa, 'liftover_ref.fa'
     stageAs query_fa, 'liftover_query.fa'
+    stageAs ref_fai, 'liftover_ref.fa.fai'
     stageAs query_fai, 'liftover_query.fa.fai'
     stageAs split_bed, 'split_liftover.bed'
     stageAs split_genome_fai, 'split_liftover.genome.fai'

@@ -13,11 +13,12 @@ workflow LIFTOVER {
     chain
     ref_fa
     query_fa
+    ref_fai
     query_fai
     split_options
 
     main:
-    lifted_out = LIFTOVER_BY_ID(id_file, chain, ref_fa, query_fa, query_fai, split_options)
+    lifted_out = LIFTOVER_BY_ID(id_file, chain, ref_fa, query_fa, ref_fai, query_fai, split_options)
 
     emit:
     files    = lifted_out.files

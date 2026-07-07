@@ -5,6 +5,7 @@
 __pycache__/
 *.py[cod]
 work/
+results/
 .antigravitycli/
 test.tsv
 /nextflow.config
