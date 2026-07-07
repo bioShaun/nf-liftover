@@ -113,10 +113,14 @@ VCF 模式额外输出：
   nf-test test tests/tomato_smoke.nf.test
 ```
 
-当前服务器也可以直接运行 smoke helper：
+当前服务器也可以直接运行 smoke helper,ID 与 VCF 两种模式：
 
 ```bash
-bash tests/data/tomato-smoke/run-smoke.sh
+# ID 模式（默认）
+bash tests/data/tomato-smoke/run-smoke.sh id
+
+# VCF liftover 模式
+bash tests/data/tomato-smoke/run-smoke.sh vcf
 ```
 
 ## nf-schema 插件
