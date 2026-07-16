@@ -23,7 +23,43 @@ def validateRequiredParams() {
 }
 
 workflow {
+    missing_config = [
+        pair_strategy: params.pair_strategy,
+        align_mode: params.align_mode,
+        split_threshold: params.split_threshold,
+        split_size: params.split_size,
+        flank: params.flank,
+        conda_dir: params.conda_dir,
+        conda_envs: params.conda_envs,
+        max_cpus: params.max_cpus,
+        max_memory: params.max_memory,
+        max_time: params.max_time
+    ].findAll { name, value -> value == null }.keySet()
+    if (missing_config) {
+        error "Missing pipeline configuration (${missing_config.join(', ')}). " +
+            "Copy ${projectDir}/nextflow.config.example to ${projectDir}/nextflow.config " +
+            "or provide an equivalent config with -c."
+    }
+
     validateRequiredParams()
+
+    input_paths = [
+        id: params.id,
+        vcf: params.vcf,
+        ref_fa: params.ref_fa,
+        query_fa: params.query_fa,
+        ref_fai: params.ref_fai,
+        query_fai: params.query_fai,
+        mapping: params.mapping,
+        split_bed: params.split_bed,
+        split_genome_fai: params.split_genome_fai
+    ].findAll { name, value -> value != null }
+    missing_inputs = input_paths.findAll { name, value -> !file(value).exists() }.keySet()
+    if (missing_inputs) {
+        error "Input files do not exist: " + missing_inputs.collect { name ->
+            "--${name} ${input_paths[name]}"
+        }.join(', ')
+    }
 
     mapping_ch = params.mapping
         ? channel.value(record(mapping_file: file(params.mapping)))
