@@ -392,6 +392,12 @@ class NextflowTypedMigrationTests(unittest.TestCase):
             (REPO_ROOT / "modules" / "local" / "derive_chrom_pairs.nf").read_text(encoding="utf-8")
         )
 
+        self.assertIn("missing_config = [", main_nf)
+        self.assertIn("Missing pipeline configuration", main_nf)
+        self.assertIn("nextflow.config.example", main_nf)
+        self.assertIn("missing_inputs = input_paths.findAll", main_nf)
+        self.assertIn("vcf: params.vcf", main_nf)
+        self.assertIn("Input files do not exist", main_nf)
         self.assertIn("record(role: 'ref'", main_nf)
         self.assertIn("record(role: 'query'", main_nf)
         self.assertIn("record(mapping_file: file(params.mapping))", main_nf)
@@ -401,6 +407,10 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertNotIn("record ChromMapping", prepare_nf)
         self.assertNotIn("tuple val(role), val(source_fasta), path(fasta), val(fai_hint)", prepare_nf)
         self.assertNotIn("tuple val(has_mapping), path(mapping_file)", prepare_nf)
+
+    def test_runtime_reports_can_be_overwritten_on_resume(self):
+        config = (REPO_ROOT / "nextflow.config.example").read_text(encoding="utf-8")
+        self.assertEqual(config.count("overwrite = true"), 3)
 
     def test_liftover_process_uses_typed_inputs_and_outputs(self):
         liftover_nf = (

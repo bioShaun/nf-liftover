@@ -66,13 +66,15 @@ profiles {
 
 // Observability and reporting outputs
 timeline {
-    enabled = true
-    file    = "${params.outdir}/pipeline_info/execution_timeline.html"
+    enabled   = true
+    overwrite = true
+    file      = "${params.outdir}/pipeline_info/execution_timeline.html"
 }
 
 report {
-    enabled = true
-    file    = "${params.outdir}/pipeline_info/execution_report.html"
+    enabled   = true
+    overwrite = true
+    file      = "${params.outdir}/pipeline_info/execution_report.html"
 }
 
 trace {
