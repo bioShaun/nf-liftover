@@ -9,7 +9,7 @@ record PairPaf {
 
 process ALIGN_SPLIT_WINDOW {
     tag "${split_base}"
-    label 'tool_ngs'
+    label 'tool_aligner'
     label 'split_mem'
     stageInMode 'symlink'
 
@@ -27,26 +27,28 @@ process ALIGN_SPLIT_WINDOW {
 
     script:
     def args = task.ext.args ?: ''
+    def aligner = params.aligner ?: 'minimap2'
     """
     samtools faidx "${ref_chrom_fa}" "${ref_chr}:${window_start}-${window_end}" \\
       | awk -v name="${split_name}" 'NR == 1 { print ">" name; next } { print }' \\
       > "${split_file}"
-    minimap2 ${args} -t ${task.cpus} "${query_mmi}" "${split_file}" > "${split_base}.paf"
+    ${aligner} ${args} -t ${task.cpus} "${query_mmi}" "${split_file}" > "${split_base}.paf"
 
     cat <<-END > versions.yml
     "${task.process}":
         samtools: \$(samtools --version | head -n 1 | awk '{ print \$2 }')
-        minimap2: \$(minimap2 --version)
+        ${aligner}: \$(${aligner} --version)
     END
     """
 
     stub:
+    def aligner = params.aligner ?: 'minimap2'
     """
     touch "${split_base}.paf"
     cat <<-END > versions.yml
     "${task.process}":
         samtools: 1.17
-        minimap2: 2.26
+        ${aligner}: stub
     END
     """
 }

@@ -20,6 +20,15 @@ def validateRequiredParams() {
     if (params.id && params.vcf) {
         throw new IllegalArgumentException("Provide only one input type: --id or --vcf")
     }
+    def alignerEnvs = params.aligner_envs ?: [:]
+    def aligner = params.aligner ?: 'minimap2'
+    // Allow bare minimap2 even when aligner_envs is missing/incomplete (legacy configs).
+    // Any other aligner must be explicitly mapped so conda beforeScript can locate its binary.
+    if (aligner != 'minimap2' && !alignerEnvs.containsKey(aligner)) {
+        throw new IllegalArgumentException(
+            "Unsupported --aligner '${params.aligner}'; supported: minimap2, mm2plus.\n" +
+            "If you upgraded an existing nextflow.config, copy the `aligner_envs` block from nextflow.config.example.")
+    }
 }
 
 workflow {

@@ -19,7 +19,7 @@ record PairPaf {
 
 process ALIGN_WHOLE_CHROMOSOME {
     tag "${pair_fastas.pair_id}"
-    label 'tool_ngs'
+    label 'tool_aligner'
     label 'large_mem'
 
     input:
@@ -36,21 +36,23 @@ process ALIGN_WHOLE_CHROMOSOME {
 
     script:
     def args = task.ext.args ?: ''
+    def aligner = params.aligner ?: 'minimap2'
     """
-    minimap2 ${args} -t ${task.cpus} "${pair_fastas.query_chrom_fa}" "${pair_fastas.ref_chrom_fa}" > "${pair_fastas.pair_id}.paf"
+    ${aligner} ${args} -t ${task.cpus} "${pair_fastas.query_chrom_fa}" "${pair_fastas.ref_chrom_fa}" > "${pair_fastas.pair_id}.paf"
 
     cat <<-END > versions.yml
     "${task.process}":
-        minimap2: \$(minimap2 --version)
+        ${aligner}: \$(${aligner} --version)
     END
     """
 
     stub:
+    def aligner = params.aligner ?: 'minimap2'
     """
     touch "${pair_fastas.pair_id}.paf"
     cat <<-END > versions.yml
     "${task.process}":
-        minimap2: 2.26
+        ${aligner}: stub
     END
     """
 }

@@ -140,4 +140,22 @@ nextflow_pipeline {
             assert path("$outputDir/software_versions.yml").exists()
         }
     }
+
+    test("rejects unsupported aligner") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                aligner = "bwa"
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.failed
+            assert workflow.stdout.any { it.contains("supported: minimap2, mm2plus") }
+        }
+    }
 }
