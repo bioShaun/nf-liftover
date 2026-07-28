@@ -22,12 +22,21 @@ def validateRequiredParams() {
     }
     def alignerEnvs = params.aligner_envs ?: [:]
     def aligner = params.aligner ?: 'minimap2'
-    // Allow bare minimap2 even when aligner_envs is missing/incomplete (legacy configs).
-    // Any other aligner must be explicitly mapped so conda beforeScript can locate its binary.
-    if (aligner != 'minimap2' && !alignerEnvs.containsKey(aligner)) {
+    def supportedAligners = ['minimap2', 'mm2plus']
+    if (!(aligner in supportedAligners)) {
         throw new IllegalArgumentException(
             "Unsupported --aligner '${params.aligner}'; supported: minimap2, mm2plus.\n" +
             "If you upgraded an existing nextflow.config, copy the `aligner_envs` block from nextflow.config.example.")
+    }
+    // Bare minimap2 is allowed without a complete aligner_envs map (legacy configs).
+    // Any other supported aligner needs a non-empty env directory name.
+    if (aligner != 'minimap2') {
+        def envName = alignerEnvs instanceof Map ? alignerEnvs.get(aligner) : null
+        if (!(envName instanceof CharSequence) || !envName.toString().trim()) {
+            throw new IllegalArgumentException(
+                "Missing aligner_envs['${aligner}'] for --aligner '${aligner}'; supported: minimap2, mm2plus.\n" +
+                "If you upgraded an existing nextflow.config, copy the `aligner_envs` block from nextflow.config.example.")
+        }
     }
 }
 

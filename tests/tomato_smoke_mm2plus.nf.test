@@ -12,6 +12,10 @@ nextflow_pipeline {
                 query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
                 mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
                 aligner = "mm2plus"
+                aligner_envs = [
+                    minimap2: "nf-liftover-tools",
+                    mm2plus : "mm2plus",
+                ]
                 outdir = "$outputDir"
             }
         }
@@ -23,6 +27,8 @@ nextflow_pipeline {
             // coordinate-level liftover outputs are the real equivalence check.
             assert path("$outputDir/chain/all.chain").exists()
             assert path("$outputDir/chain/all.chain").size() > 0
+            assert path("$outputDir/software_versions.yml").exists()
+            assert path("$outputDir/software_versions.yml").text.contains("mm2plus")
             assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
             assert path("$outputDir/liftover/tomato-smoke.bed").text == "chr01\t999\t1000\nchr01\t4999\t5000\nchr01\t8999\t9000\n"
             assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01\t899\t1100\nchr01\t4899\t5100\nchr01\t8899\t9100\n"
