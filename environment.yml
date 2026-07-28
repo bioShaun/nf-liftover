@@ -1,0 +1,23 @@
+# Pinned task environment for nf-liftover.
+#
+# Create / update:
+#   mamba env create -f environment.yml
+#   mamba env update -f environment.yml --prune
+#
+# Versions match the validated nf-liftover-tools stack used for smoke tests.
+# Nextflow launcher (nextflow + Java) is separate.
+name: nf-liftover-tools
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.11.15
+  - pandas=3.0.3
+  - typer=0.26.8
+  - loguru=0.7.3
+  - pyfaidx=0.9.0.4
+  - samtools=1.23.1
+  - htslib=1.23.1
+  - minimap2=2.31
+  - transanno=0.4.5

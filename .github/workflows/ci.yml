@@ -1,0 +1,179 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-and-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize config for clean checkout
+        # nextflow.config is gitignored; -C uses the committed example as the sole config root.
+        run: cp nextflow.config.example nextflow.config
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: nf-liftover-tools
+          environment-file: environment.yml
+          python-version: "3.11"
+          auto-activate-base: false
+
+      - name: Python unit tests
+        shell: bash -el {0}
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "26.04.4"
+
+      - name: Parse Nextflow config
+        shell: bash -el {0}
+        run: |
+          nextflow config -profile standard >/dev/null
+          nextflow config -profile test >/dev/null
+          nextflow config -profile ci >/dev/null
+
+      - name: Help exits without required inputs
+        shell: bash -el {0}
+        run: |
+          nextflow run . --help | tee help.out
+          grep -q "USAGE" help.out
+
+      - name: Fail-fast on missing required input
+        shell: bash -el {0}
+        run: |
+          set +e
+          nextflow run . -profile ci 2> err.out
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -Eq "ref_fa|required" err.out
+
+      - name: Fail-fast on invalid enum
+        shell: bash -el {0}
+        run: |
+          set +e
+          nextflow run . -profile ci \
+            --ref_fa tests/data/tomato-smoke/SL4.0ch01.10kb.fa \
+            --query_fa tests/data/tomato-smoke/LA2093.chr01.10kb.fa \
+            --id tests/data/tomato-smoke/tomato-smoke.id \
+            --align_mode nope 2> err.out
+          rc=$?
+          set -e
+          test "$rc" -ne 0
+          grep -q "align_mode" err.out
+
+  smoke-id-vcf:
+    runs-on: ubuntu-latest
+    needs: unit-and-config
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize config for clean checkout
+        run: cp nextflow.config.example nextflow.config
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          activate-environment: nf-liftover-tools
+          environment-file: environment.yml
+          python-version: "3.11"
+          auto-activate-base: false
+
+      - name: Install Nextflow
+        uses: nf-core/setup-nextflow@v2
+        with:
+          version: "26.04.4"
+
+      - name: Tomato ID smoke
+        shell: bash -el {0}
+        run: |
+          set -euo pipefail
+          nextflow run . \
+            -profile ci \
+            --id tests/data/tomato-smoke/tomato-smoke.id \
+            --ref_fa tests/data/tomato-smoke/SL4.0ch01.10kb.fa \
+            --query_fa tests/data/tomato-smoke/LA2093.chr01.10kb.fa \
+            --mapping tests/data/tomato-smoke/chrom_pairs.tsv \
+            --outdir results/ci-tomato-id \
+            -resume
+
+          test -f results/ci-tomato-id/chain/all.chain
+          test -f results/ci-tomato-id/chain/chain_meta.yml
+          test -f results/ci-tomato-id/software_versions.yml
+          test -f results/ci-tomato-id/run_meta.yml
+          test ! -f results/ci-tomato-id/chain/all.paf
+
+          # software_versions must be parseable YAML without literal END
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("results/ci-tomato-id/software_versions.yml").read_text()
+          assert "END" not in text.split(), "literal END leaked into software_versions.yml"
+          # Minimal structure checks without PyYAML
+          assert 'nextflow:' in text
+          assert 'python_path:' in text or 'samtools_path:' in text or 'minimap2_path:' in text
+          PY
+
+          # Strict tool-path checks: every *_path must point into a conda env bin
+          # (nf-liftover-tools name or Nextflow-managed work/conda env path).
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path("results/ci-tomato-id/software_versions.yml").read_text()
+          paths = re.findall(r"^\s*(\w+_path):\s*(\S+)\s*$", text, flags=re.M)
+          assert paths, "expected at least one *_path entry in software_versions.yml"
+          for key, path in paths:
+              ok = (
+                  "/envs/nf-liftover-tools/" in path
+                  or "/conda/env-" in path
+                  or "/conda/" in path and path.endswith(("/bin/python", "/bin/python3", "/bin/samtools", "/bin/minimap2", "/bin/transanno"))
+                  or "/envs/" in path and "/bin/" in path
+              )
+              assert ok, f"{key} not under a conda env bin: {path}"
+              assert not path.startswith("/usr/bin/"), f"{key} resolved to system binary: {path}"
+              print(f"OK {key}={path}")
+          PY
+
+          test "$(cat results/ci-tomato-id/liftover/tomato-smoke.id)" = $'chr01_1000\nchr01_5000\nchr01_9000'
+
+          # Provenance: git commit recorded
+          grep -E 'git_commit:|manifest_version:' results/ci-tomato-id/run_meta.yml
+
+      - name: Tomato VCF smoke (reuse chain)
+        shell: bash -el {0}
+        run: |
+          set -euo pipefail
+          nextflow run . \
+            -profile ci \
+            --vcf tests/data/tomato-smoke/input.vcf \
+            --ref_fa tests/data/tomato-smoke/SL4.0ch01.10kb.fa \
+            --query_fa tests/data/tomato-smoke/LA2093.chr01.10kb.fa \
+            --mapping tests/data/tomato-smoke/chrom_pairs.tsv \
+            --chain results/ci-tomato-id/chain/all.chain \
+            --chain_meta results/ci-tomato-id/chain/chain_meta.yml \
+            --outdir results/ci-tomato-vcf \
+            -resume
+
+          test -f results/ci-tomato-vcf/liftover/input.vcf.gz
+          test -f results/ci-tomato-vcf/chain/chain_meta.yml
+          test -f results/ci-tomato-vcf/chain/all.chain
+
+          # Prove alignment was not scheduled: inspect execution trace names
+          TRACE=results/ci-tomato-vcf/pipeline_info/execution_trace.txt
+          test -f "$TRACE"
+          ! grep -E 'ALIGN_WHOLE_CHROMOSOME|ALIGN_SPLIT_WINDOW|PAF_TO_CHAIN|BUILD_QUERY_MMI|COMBINE_ALL_PAFS' "$TRACE"
+          grep -q 'WRITE_CHAIN_META' "$TRACE"
+          grep -q 'LIFTOVER_VCF' "$TRACE"
+
+          # chain_meta documents reuse + validation
+          grep -q 'mode: "reuse"' results/ci-tomato-vcf/chain/chain_meta.yml
+          grep -q 'chain_headers_checked: true' results/ci-tomato-vcf/chain/chain_meta.yml

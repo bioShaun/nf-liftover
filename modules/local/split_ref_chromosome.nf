@@ -45,10 +45,10 @@ process SPLIT_REF_CHROMOSOME {
         start=\$(( start + ${params.split_size} ))
     done
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        bash: \$(bash --version | head -n 1 | awk '{ print \$4 }' || echo "5.0")
-    END
+    {
+      echo '"${task.process}":'
+      echo "    bash: \$(bash --version | head -n 1 | awk '{ print \$4 }' || echo 5.0)"
+    } > versions.yml
     """
 
     stub:
@@ -68,9 +68,9 @@ process SPLIT_REF_CHROMOSOME {
       "\${split_name}" \\
       "\${split_base}.fa" \\
       "\${split_base}" > windows.tsv
-    cat <<-END > versions.yml
-    "${task.process}":
-        bash: 5.2
-    END
+    {
+      echo '"${task.process}":'
+      echo "    bash: 5.2"
+    } > versions.yml
     """
 }

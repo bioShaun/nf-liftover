@@ -37,6 +37,14 @@
       "type": ["string", "null"],
       "description": "Optional two-column chromosome mapping TSV"
     },
+    "chain": {
+      "type": ["string", "null"],
+      "description": "Optional existing chain file; when set, genome alignment is skipped"
+    },
+    "chain_meta": {
+      "type": ["string", "null"],
+      "description": "Optional chain_meta.yml sidecar; when set with --chain, verify source/target FASTA sha256"
+    },
     "outdir": {
       "type": "string",
       "default": "results"
@@ -80,6 +88,11 @@
       "type": "integer",
       "default": 100,
       "minimum": 0
+    },
+    "publish_paf": {
+      "type": "boolean",
+      "default": false,
+      "description": "Publish merged all.paf under outdir/chain (default false)"
     },
     "conda_dir": {
       "type": "string",

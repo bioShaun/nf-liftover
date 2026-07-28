@@ -5,7 +5,8 @@ process COMBINE_ALL_PAFS {
     label 'tool_ngs'
     label 'small_mem'
 
-    publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.paf'
+    // Publish merged PAF only when --publish_paf is true (default false for production).
+    publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.paf', enabled: params.publish_paf
 
     input:
     paf_files
@@ -22,18 +23,18 @@ ${pafList}
 EOF
     xargs cat < pafs.list > all.paf
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        bash: \$(bash --version | head -n 1 | awk '{ print \$4 }' || echo "5.0")
-    END
+    {
+      echo '"${task.process}":'
+      echo "    bash: \$(bash --version | head -n 1 | awk '{ print \$4 }' || echo 5.0)"
+    } > versions.yml
     """
 
     stub:
     """
     touch all.paf
-    cat <<-END > versions.yml
-    "${task.process}":
-        bash: 5.2
-    END
+    {
+      echo '"${task.process}":'
+      echo "    bash: 5.2"
+    } > versions.yml
     """
 }

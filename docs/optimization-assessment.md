@@ -244,7 +244,7 @@ P0 是后续所有性能测试和功能验收的前置条件。P1 项目宜在�
 
 ## 验证记录
 
-本次评估执行了以下检查：
+### 评估时（2026-07-15）
 
 ```text
 Python unittest: 21 tests, OK
@@ -253,4 +253,24 @@ Missing required input: exit 1, correctly reports --ref_fa
 ID smoke: reaches LIFTOVER_BY_ID, then fails because base Python shadows task environment
 ```
 
-smoke 调查产生的临时输出和工作目录已清理；仓库未保留调试脚本或运行产物。
+### 实施后（2026-07-16）
+
+按推荐顺序已落地：P0 PATH 修复；P1 可复现环境、CI、help/参数校验、`--chain` 复用；P2 report 覆盖、`publish_paf`、large_mem 重试增长。P2 滑窗 overlap 与 P3 Python 拆分留待基准与行为锁定后进行。
+
+审核反馈修复（同日）：
+
+- `WRITE_CHAIN_META` 改为 base64/JSON + 引用 heredoc；校验逻辑抽到 `bin/chain_meta.py`
+- reuse 校验 chain header 染色体名/长度/方向，可选 `--chain_meta` sidecar sha256
+- reuse 发布 `chain/all.chain` 副本
+- CI：`cp nextflow.config.example nextflow.config` + `-profile ci`；严格 `*_path` 断言；trace 证明未跑 alignment
+- `environment.yml` 固定版本；`run_meta.yml` 记录 git commit/dirty
+- 全模块 versions 片段改用 echo 写入；collate 过滤字面量 `END`
+
+```text
+Python unittest: 26 tests, OK
+nextflow run . --help (clean checkout + example config): exit 0
+ID smoke: success; software_versions.yml valid (no END); tool paths under nf-liftover-tools
+ID + --chain + --chain_meta: success; publishes chain/all.chain; no ALIGN_* in trace
+Swapped ref/query with same chain: fails with "Chain appears reversed"
+run_meta: git_commit + git_dirty recorded
+```

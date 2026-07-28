@@ -53,10 +53,10 @@ process EXTRACT_CHROM_FASTAS {
     samtools faidx "${pair.pair_id}.ref.fa"
     samtools faidx query_genome.fa "${pair.query_chr}" > "${pair.pair_id}.query.fa"
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        samtools: \$(samtools --version | head -n 1 | awk '{ print \$2 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    samtools: \$(samtools --version | head -n 1 | awk '{ print \$2 }')"
+    } > versions.yml
     """
 
     stub:
@@ -64,9 +64,9 @@ process EXTRACT_CHROM_FASTAS {
     touch "${pair.pair_id}.ref.fa"
     touch "${pair.pair_id}.ref.fa.fai"
     touch "${pair.pair_id}.query.fa"
-    cat <<-END > versions.yml
-    "${task.process}":
-        samtools: 1.17
-    END
+    {
+      echo '"${task.process}":'
+      echo "    samtools: 1.17"
+    } > versions.yml
     """
 }

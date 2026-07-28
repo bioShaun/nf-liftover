@@ -19,18 +19,18 @@ process PAF_TO_CHAIN {
     """
     transanno minimap2chain ${args} --output all.chain "${paf}"
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        transanno: \$(transanno --version | awk '{ print \$2 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    transanno: \$(transanno --version | awk '{ print \$2 }')"
+    } > versions.yml
     """
 
     stub:
     """
     touch all.chain
-    cat <<-END > versions.yml
-    "${task.process}":
-        transanno: 1.2.0
-    END
+    {
+      echo '"${task.process}":'
+      echo "    transanno: 1.2.0"
+    } > versions.yml
     """
 }

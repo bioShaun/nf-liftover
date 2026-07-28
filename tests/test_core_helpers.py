@@ -357,6 +357,109 @@ class MergeBlastRescueTests(unittest.TestCase):
             self.assertTrue((outdir / "panel.method.tsv").is_file())
 
 
+
+class ChainMetaTests(unittest.TestCase):
+    def test_validate_accepts_matching_chain_headers(self):
+        module = load_module("chain_meta", REPO_ROOT / "bin" / "chain_meta.py")
+        blocks = [
+            {
+                "t_name": "SL4.0ch01",
+                "t_size": 10000,
+                "t_strand": "+",
+                "q_name": "chr01",
+                "q_size": 10000,
+                "q_strand": "+",
+            }
+        ]
+        ref_len = {"SL4.0ch01": 10000}
+        query_len = {"chr01": 10000}
+        module.validate_chain_against_genomes(blocks, ref_len, query_len)
+
+    def test_validate_rejects_reversed_chain(self):
+        module = load_module("chain_meta", REPO_ROOT / "bin" / "chain_meta.py")
+        blocks = [
+            {
+                "t_name": "chr01",
+                "t_size": 10000,
+                "t_strand": "+",
+                "q_name": "SL4.0ch01",
+                "q_size": 10000,
+                "q_strand": "+",
+            }
+        ]
+        ref_len = {"SL4.0ch01": 10000}
+        query_len = {"chr01": 10000}
+        with self.assertRaises(ValueError) as ctx:
+            module.validate_chain_against_genomes(blocks, ref_len, query_len)
+        self.assertIn("reversed", str(ctx.exception).lower())
+
+    def test_validate_rejects_size_mismatch(self):
+        module = load_module("chain_meta", REPO_ROOT / "bin" / "chain_meta.py")
+        blocks = [
+            {
+                "t_name": "SL4.0ch01",
+                "t_size": 9999,
+                "t_strand": "+",
+                "q_name": "chr01",
+                "q_size": 10000,
+                "q_strand": "+",
+            }
+        ]
+        ref_len = {"SL4.0ch01": 10000}
+        query_len = {"chr01": 10000}
+        with self.assertRaises(ValueError) as ctx:
+            module.validate_chain_against_genomes(blocks, ref_len, query_len)
+        self.assertIn("size", str(ctx.exception).lower())
+
+    def test_sidecar_sha_mismatch_fails(self):
+        module = load_module("chain_meta_side", REPO_ROOT / "bin" / "chain_meta.py")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            side = tmp / "chain_meta.yml"
+            side.write_text(
+                "source_fasta:\n"
+                "  sha256: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n"
+                "target_fasta:\n"
+                "  sha256: \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n"
+                "chain:\n"
+                "  sha256: \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                module.validate_sidecar_required(
+                    str(side),
+                    "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                )
+
+    def test_yaml_escaping_for_special_paths(self):
+        module = load_module("chain_meta_escape", REPO_ROOT / "bin" / "chain_meta.py")
+        lines = module.build_chain_meta_doc(
+            mode="reuse",
+            ref_path=r"/data/ref$weird/name's.fa",
+            query_path=r"/data/query`x`.fa",
+            chain_path=r"/data/all.chain",
+            ref_sha="abc",
+            ref_size=1,
+            query_sha="def",
+            query_size=2,
+            chain_sha="ghi",
+            chain_size=3,
+            blocks=[{"t_name": "a", "q_name": "b"}],
+            pair_lines=["a\tb"],
+            pair_strategy="suffix",
+            align_mode="auto",
+            split_threshold=1,
+            split_size=1,
+            minimap2_args="-cx asm5 --cs",
+            sidecar_info=None,
+        )
+        text = "\n".join(lines)
+        self.assertIn(json.dumps(r"/data/ref$weird/name's.fa"), text)
+        self.assertIn(json.dumps(r"/data/query`x`.fa"), text)
+
+
 class TomatoSmokeFixtureTests(unittest.TestCase):
     def test_tomato_smoke_fixture_has_pairable_fastas_and_ids(self):
         derive_module = load_module("derive_chrom_pairs_fixture", REPO_ROOT / "bin" / "derive_chrom_pairs.py")

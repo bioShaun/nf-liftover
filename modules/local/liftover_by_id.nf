@@ -20,6 +20,8 @@ process LIFTOVER_BY_ID {
     )
 
     stage:
+    // Keep the original id basename for output naming; only rename colliding FASTA/chain paths.
+    stageAs chain, 'input.chain'
     stageAs ref_fa, 'liftover_ref.fa'
     stageAs query_fa, 'liftover_query.fa'
     stageAs ref_fai, 'liftover_ref.fa.fai'
@@ -35,25 +37,29 @@ process LIFTOVER_BY_ID {
     def splitBedArg = split_bed ? "--split-bed split_liftover.bed" : ''
     def splitGenomeFaiArg = split_genome_fai ? "--split-genome-fai split_liftover.genome.fai" : ''
     def args = task.ext.args ?: ''
+    def probeName = id_file.baseName
     """
     mkdir -p out
 
     python ${projectDir}/bin/liftover_by_id.py \\
       "${id_file}" \\
-      "${chain}" \\
+      input.chain \\
       liftover_ref.fa \\
       liftover_query.fa \\
       out \\
       --flank ${params.flank} \\
+      --probe-name "${probeName}" \\
       ${splitBedArg} \\
       ${splitGenomeFaiArg} \\
       ${args}
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        python: \$(python --version 2>&1 | awk '{ print \$2 }')
-        transanno: \$(transanno --version | awk '{ print \$2 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    python: \$(python --version 2>&1 | awk '{ print \$2 }')"
+      echo "    python_path: \$(command -v python)"
+      echo "    transanno: \$(transanno --version | awk '{ print \$2 }')"
+      echo "    transanno_path: \$(command -v transanno)"
+    } > versions.yml
     """
 
     stub:
@@ -63,10 +69,10 @@ process LIFTOVER_BY_ID {
     touch "out/${id_file.baseName}.bed"
     touch "out/${id_file.baseName}.pos.tsv"
     touch "out/${id_file.baseName}.snpcalling.bed"
-    cat <<-END > versions.yml
-    "${task.process}":
-        python: 3.12.0
-        transanno: 1.2.0
-    END
+    {
+      echo '"${task.process}":'
+      echo "    python: 3.12.0"
+      echo "    transanno: 1.2.0"
+    } > versions.yml
     """
 }

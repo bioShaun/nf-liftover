@@ -32,10 +32,10 @@ process DERIVE_CHROM_PAIRS {
       --strategy "${strategy}" \\
       ${mapping_args}
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        python: \$(python --version 2>&1 | awk '{ print \$2 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    python: \$(python --version 2>&1 | awk '{ print \$2 }')"
+    } > versions.yml
     """
 
     stub:
@@ -45,9 +45,9 @@ process DERIVE_CHROM_PAIRS {
     else
       awk 'BEGIN { FS=OFS="\\t" } NR == FNR { if (!ref) ref=\$1; next } { if (!query) query=\$1 } END { if (!ref || !query) exit 1; print ref, query }' ref.fa.fai query.fa.fai > chrom_pairs.tsv
     fi
-    cat <<-END > versions.yml
-    "${task.process}":
-        python: 3.12.0
-    END
+    {
+      echo '"${task.process}":'
+      echo "    python: 3.12.0"
+    } > versions.yml
     """
 }

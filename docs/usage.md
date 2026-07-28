@@ -18,7 +18,19 @@ $MAMBA run -n nextflow26 nextflow -version
 - `nextflow26`：运行 Nextflow 26.x 与 Java。
 - `nf-liftover-tools`：运行流程任务，包含 `python`、`pandas`、`typer`、`loguru`、`pyfaidx`、`samtools`、`minimap2`、`transanno`。
 
+在新机器上可从仓库根目录的 `environment.yml` 创建任务环境：
+
+```bash
+mamba env create -f environment.yml
+```
+
 如果 env 所在目录不同，可用 `--conda_dir` 覆盖；如果 env 名不同，可在 `nextflow.config` 的 `params.conda_envs` 中调整。
+
+查看帮助（无需输入文件）：
+
+```bash
+nextflow run . --help
+```
 
 ## 配置初始化
 
@@ -67,6 +79,8 @@ HPC 上把 `-profile standard` 改为 `-profile slurm` 或 `-profile slurm_new`�
 - `--vcf`：输入 VCF/VCF.GZ/BCF 文件；与 `--id` 二选一。VCF 模式会保留 FORMAT、样本列、基因型和 INFO 字段。
 - `--ref_fa`：原始/参考 FASTA。
 - `--query_fa`：目标/新 FASTA。
+- `--chain`：可选，已有 chain 文件；提供时跳过 minimap2 与 PAF-to-chain，并校验 chain header 与当前基因组是否匹配。
+- `--chain_meta`：可选，先前运行生成的 `chain_meta.yml`；与 `--chain` 联用时额外校验 FASTA sha256。
 - `--outdir`：输出目录，默认 `results`。
 - `--mapping`：可选，两列 TSV，覆盖自动染色体对应。
 - `--pair_strategy`：自动对应策略，`suffix` 或 `order`，默认 `suffix`。
@@ -76,13 +90,17 @@ HPC 上把 `-profile standard` 改为 `-profile slurm` 或 `-profile slurm_new`�
 - `--split_bed`：可选，4 列 `chrom, split_start, split_end, new_chrom` BED；提供后 `<probe>.bed` 与 `<probe>.snpcalling.bed` 输出 split 坐标。
 - `--split_genome_fai`：可选，split genome `.fai`，用于排序 split 坐标 BED；未提供时会尝试使用 `split_bed` 同目录下的 `genome.fa.fai`。
 - `--flank`：`snpcalling.bed` 两侧扩展长度，默认 `100`。
+- `--publish_paf`：是否发布合并后的 `all.paf`，默认 `false`。
 
 ## 输出
 
 流程会发布到 `--outdir`：
 
-- `chain/all.chain`
+- `chain/all.chain`（端到端构建或 reuse 校验后发布的副本）
+- `chain/chain_meta.yml`（源/目标 FASTA 校验和、染色体映射、校验结果）
+- `chain/all.paf`（仅 `--publish_paf true`）
 - `software_versions.yml`
+- `run_meta.yml`（含 git commit / dirty / manifest 版本）
 
 ID 模式额外输出：
 
@@ -121,8 +139,19 @@ bash tests/data/tomato-smoke/run-smoke.sh id
 
 # VCF liftover 模式
 bash tests/data/tomato-smoke/run-smoke.sh vcf
+
+# 复用已有 chain（需先跑 id）
+bash tests/data/tomato-smoke/run-smoke.sh chain
 ```
 
-## nf-schema 插件
+## 参数校验
 
-当前流程只做内置必填参数检查，不再强制依赖 `nf-schema` 插件，因此在不能下载 Nextflow 插件的服务器上也可以直接运行。服务器上如果已经在 `~/.nextflow/plugins/` 中放置 `nf-schema`，不会影响本流程运行。
+流程入口实现了内置 `--help` 与 fail-fast 校验（不依赖 `nf-schema` 插件，离线环境可直接运行）：
+
+- 必填：`--ref_fa`、`--query_fa`，以及 `--id` / `--vcf` 二选一；
+- 枚举：`--align_mode`、`--pair_strategy`；
+- 范围：`--split_threshold`、`--split_size`、`--flank`、`--max_cpus`；
+- 文件存在性：FASTA、FAI、mapping、chain、ID/VCF、split BED；
+- 互斥：VCF 模式不可同时提供 `--split_bed` / `--split_genome_fai`。
+
+`nextflow_schema.json` 与 `nextflow.config` / README 中的默认值保持同步，供文档与外部工具使用。

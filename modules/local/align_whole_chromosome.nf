@@ -40,19 +40,21 @@ process ALIGN_WHOLE_CHROMOSOME {
     """
     ${aligner} ${args} -t ${task.cpus} "${pair_fastas.query_chrom_fa}" "${pair_fastas.ref_chrom_fa}" > "${pair_fastas.pair_id}.paf"
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        ${aligner}: \$(${aligner} --version)
-    END
+    {
+      echo '"${task.process}":'
+      echo "    ${aligner}: \$(${aligner} --version)"
+      echo "    ${aligner}_path: \$(command -v ${aligner})"
+    } > versions.yml
     """
 
     stub:
     def aligner = params.aligner ?: 'minimap2'
     """
     touch "${pair_fastas.pair_id}.paf"
-    cat <<-END > versions.yml
-    "${task.process}":
-        ${aligner}: stub
-    END
+    {
+      echo '"${task.process}":'
+      echo "    ${aligner}: stub"
+      echo "    ${aligner}_path: stub"
+    } > versions.yml
     """
 }

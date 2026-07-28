@@ -34,21 +34,21 @@ process ALIGN_SPLIT_WINDOW {
       > "${split_file}"
     ${aligner} ${args} -t ${task.cpus} "${query_mmi}" "${split_file}" > "${split_base}.paf"
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        samtools: \$(samtools --version | head -n 1 | awk '{ print \$2 }')
-        ${aligner}: \$(${aligner} --version)
-    END
+    {
+      echo '"${task.process}":'
+      echo "    samtools: \$(samtools --version | head -n 1 | awk '{ print \$2 }')"
+      echo "    ${aligner}: \$(${aligner} --version)"
+    } > versions.yml
     """
 
     stub:
     def aligner = params.aligner ?: 'minimap2'
     """
     touch "${split_base}.paf"
-    cat <<-END > versions.yml
-    "${task.process}":
-        samtools: 1.17
-        ${aligner}: stub
-    END
+    {
+      echo '"${task.process}":'
+      echo "    samtools: 1.17"
+      echo "    ${aligner}: stub"
+    } > versions.yml
     """
 }

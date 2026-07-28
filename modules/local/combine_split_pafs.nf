@@ -34,18 +34,18 @@ EOF
     xargs cat < split_pafs.list > "${pair_id}.split.paf"
     python ${projectDir}/bin/restore_split_paf.py "${pair_id}.split.paf" "${ref_fai}" "${pair_id}.paf"
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        python: \$(python --version 2>&1 | awk '{ print \$2 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    python: \$(python --version 2>&1 | awk '{ print \$2 }')"
+    } > versions.yml
     """
 
     stub:
     """
     touch "${pair_id}.paf"
-    cat <<-END > versions.yml
-    "${task.process}":
-        python: 3.12.0
-    END
+    {
+      echo '"${task.process}":'
+      echo "    python: 3.12.0"
+    } > versions.yml
     """
 }

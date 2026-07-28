@@ -405,6 +405,13 @@ def main(
             "未提供时会尝试使用 split.bed 同目录下的 genome.fa.fai"
         ),
     ] = None,
+    probe_name: Annotated[
+        str | None,
+        typer.Option(
+            help="输出文件名前缀；默认使用 id_file 的 stem。"
+            "当 id_file 被 stage 为固定名时由流程传入原始 stem。"
+        ),
+    ] = None,
 ) -> None:
     """根据 ID 文件进行 liftover 并生成 BED/ID 文件。"""
     if flank < 0:
@@ -416,9 +423,9 @@ def main(
     vcf = make_id_vcf(id_file, ref_fa)
 
     # 2. 运行 transanno liftvcf
-    probe_name = id_file.stem
-    lift_over_vcf = outdir / f"liftover.{id_file.name}.vcf.gz"
-    rejected_vcf = outdir / f"rejected.{id_file.name}.vcf.gz"
+    probe = probe_name if probe_name else id_file.stem
+    lift_over_vcf = outdir / f"liftover.{probe}.id.vcf.gz"
+    rejected_vcf = outdir / f"rejected.{probe}.id.vcf.gz"
 
     if force or not lift_over_vcf.is_file():
         run_transanno_liftvcf(vcf, chain, ref_fa, query_fa, lift_over_vcf, rejected_vcf)
@@ -443,7 +450,7 @@ def main(
         sorted_bed=sorted_bed,
         snpcalling_sorted=snpcalling_sorted,
         outdir=outdir,
-        probe_name=probe_name,
+        probe_name=probe,
         split_bed=split_bed,
         split_genome_fai=split_genome_fai,
     )

@@ -12,3 +12,6 @@ test.tsv
 .agents/
 .claude/
 skills-lock.json
+work-smoke/
+work-merge-*/
+work-review/

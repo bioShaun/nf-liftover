@@ -36,19 +36,19 @@ process BUILD_QUERY_MMI {
     """
     ${aligner} ${args} -t ${task.cpus} -d "${pair_fastas.pair_id}.query.mmi" "${pair_fastas.query_chrom_fa}"
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        ${aligner}: \$(${aligner} --version)
-    END
+    {
+      echo '"${task.process}":'
+      echo "    ${aligner}: \$(${aligner} --version)"
+    } > versions.yml
     """
 
     stub:
     def aligner = params.aligner ?: 'minimap2'
     """
     touch "${pair_fastas.pair_id}.query.mmi"
-    cat <<-END > versions.yml
-    "${task.process}":
-        ${aligner}: stub
-    END
+    {
+      echo '"${task.process}":'
+      echo "    ${aligner}: stub"
+    } > versions.yml
     """
 }

@@ -32,10 +32,10 @@ process BUILD_ALIGN_PAIRS {
         print pair_id, \$1, \$2, lengths[\$1]
       }' ref.fa.fai chrom_pairs.tsv > align_pairs.tsv
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        awk: \$(awk -W version 2>&1 | head -n 1 | awk '{ print \$3 }' || awk --version 2>&1 | head -n 1 | awk '{ print \$3 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    awk: \$(awk -W version 2>&1 | head -n 1 | awk '{ print \$3 }' || awk --version 2>&1 | head -n 1 | awk '{ print \$3 }')"
+    } > versions.yml
     """
 
     stub:
@@ -52,9 +52,9 @@ process BUILD_ALIGN_PAIRS {
         gsub(/[^A-Za-z0-9._-]/, "_", pair_id)
         print pair_id, \$1, \$2, lengths[\$1]
       }' ref.fa.fai chrom_pairs.tsv > align_pairs.tsv
-    cat <<-END > versions.yml
-    "${task.process}":
-        awk: 1.0.0
-    END
+    {
+      echo '"${task.process}":'
+      echo "    awk: 1.0.0"
+    } > versions.yml
     """
 }

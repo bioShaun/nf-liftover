@@ -16,6 +16,8 @@ process LIFTOVER_VCF {
     query_fai: Path
 
     stage:
+    stageAs vcf_file, 'input.vcf'
+    stageAs chain, 'input.chain'
     stageAs ref_fa, 'liftover_ref.fa'
     stageAs query_fa, 'liftover_query.fa'
     stageAs ref_fai, 'liftover_ref.fa.fai'
@@ -53,11 +55,11 @@ process LIFTOVER_VCF {
       tabix -f -p vcf "\${rejected_vcf}"
     fi
 
-    cat <<-END > versions.yml
-    "${task.process}":
-        transanno: \$(transanno --version | awk '{ print \$2 }')
-        tabix: \$(tabix --version 2>&1 | head -n 1 | awk '{ print \$2 }')
-    END
+    {
+      echo '"${task.process}":'
+      echo "    transanno: \$(transanno --version | awk '{ print \$2 }')"
+      echo "    tabix: \$(tabix --version 2>&1 | head -n 1 | awk '{ print \$2 }')"
+    } > versions.yml
     """
 
     stub:
@@ -71,10 +73,10 @@ process LIFTOVER_VCF {
     touch "out/\${prefix}.vcf.gz.tbi"
     touch "out/rejected.\${prefix}.vcf.gz"
     touch "out/rejected.\${prefix}.vcf.gz.tbi"
-    cat <<-END > versions.yml
-    "${task.process}":
-        transanno: 1.2.0
-        tabix: 1.17
-    END
+    {
+      echo '"${task.process}":'
+      echo "    transanno: 1.2.0"
+      echo "    tabix: 1.17"
+    } > versions.yml
     """
 }
