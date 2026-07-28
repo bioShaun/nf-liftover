@@ -18,6 +18,8 @@ nextflow_pipeline {
             assert workflow.trace.failed().size() == 0
             assert path("$outputDir/chain/all.chain").exists()
             assert path("$outputDir/software_versions.yml").exists()
+            // Legacy config has no aligner param; base.config must fall back to minimap2.
+            assert path("$outputDir/software_versions.yml").text.contains("minimap2")
             assert path("$outputDir/liftover/tomato-smoke.id").text == "chr01_1000\nchr01_5000\nchr01_9000\n"
             assert path("$outputDir/liftover/tomato-smoke.bed").text == "chr01\t999\t1000\nchr01\t4999\t5000\nchr01\t8999\t9000\n"
             assert path("$outputDir/liftover/tomato-smoke.snpcalling.bed").text == "chr01\t899\t1100\nchr01\t4899\t5100\nchr01\t8899\t9100\n"
@@ -138,6 +140,84 @@ nextflow_pipeline {
             assert taskNames.any { it.contains("ALIGN_AND_CHAIN:COMBINE_SPLIT_PAFS") }
             assert path("$outputDir/chain/all.chain").exists()
             assert path("$outputDir/software_versions.yml").exists()
+        }
+    }
+
+    test("rejects unsupported aligner") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                aligner = "bwa"
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.failed
+            assert workflow.stdout.any { it.contains("Unsupported --aligner") }
+            assert workflow.stdout.any { it.contains("supported: minimap2, mm2plus") }
+        }
+    }
+
+    test("rejects aligner outside supported list even if mapped in aligner_envs") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                aligner = "bwa"
+                aligner_envs = [bwa: "some-env"]
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.failed
+            assert workflow.stdout.any { it.contains("Unsupported --aligner") }
+            assert workflow.stdout.any { it.contains("supported: minimap2, mm2plus") }
+        }
+    }
+
+    test("rejects mm2plus when aligner_envs mapping is missing") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                aligner = "mm2plus"
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.failed
+            assert workflow.stdout.any { it.contains("Missing aligner_envs") }
+            assert workflow.stdout.any { it.contains("nextflow.config.example") }
+        }
+    }
+
+    test("rejects mm2plus when aligner_envs mapping is empty") {
+        when {
+            params {
+                id = "$baseDir/tests/data/tomato-smoke/tomato-smoke.id"
+                ref_fa = "$baseDir/tests/data/tomato-smoke/SL4.0ch01.10kb.fa"
+                query_fa = "$baseDir/tests/data/tomato-smoke/LA2093.chr01.10kb.fa"
+                mapping = "$baseDir/tests/data/tomato-smoke/chrom_pairs.tsv"
+                aligner = "mm2plus"
+                aligner_envs = [minimap2: "nf-liftover-tools", mm2plus: ""]
+                outdir = "$outputDir"
+            }
+        }
+
+        then {
+            assert workflow.failed
+            assert workflow.stdout.any { it.contains("Missing aligner_envs") }
+            assert workflow.stdout.any { it.contains("nextflow.config.example") }
         }
     }
 }

@@ -46,6 +46,12 @@
       "enum": ["order", "suffix"],
       "default": "suffix"
     },
+    "aligner": {
+      "type": "string",
+      "enum": ["minimap2", "mm2plus"],
+      "default": "minimap2",
+      "description": "Aligner binary used for chromosome and window alignment. mm2plus is a drop-in accelerated minimap2 fork; see docs/wheat-split-benchmark-spec.md for when it helps"
+    },
     "align_mode": {
       "type": "string",
       "enum": ["auto", "whole", "split"],
@@ -81,6 +87,10 @@
     },
     "conda_envs": {
       "type": "object"
+    },
+    "aligner_envs": {
+      "type": "object",
+      "description": "Conda env directory name providing each supported aligner binary"
     },
     "max_cpus": {
       "type": "integer",

@@ -17,7 +17,7 @@ record PairMmi {
 
 process BUILD_QUERY_MMI {
     tag "${pair_fastas.pair_id}"
-    label 'tool_ngs'
+    label 'tool_aligner'
     label 'split_mem'
 
     input:
@@ -32,21 +32,23 @@ process BUILD_QUERY_MMI {
 
     script:
     def args = task.ext.args ?: ''
+    def aligner = params.aligner ?: 'minimap2'
     """
-    minimap2 ${args} -t ${task.cpus} -d "${pair_fastas.pair_id}.query.mmi" "${pair_fastas.query_chrom_fa}"
+    ${aligner} ${args} -t ${task.cpus} -d "${pair_fastas.pair_id}.query.mmi" "${pair_fastas.query_chrom_fa}"
 
     cat <<-END > versions.yml
     "${task.process}":
-        minimap2: \$(minimap2 --version)
+        ${aligner}: \$(${aligner} --version)
     END
     """
 
     stub:
+    def aligner = params.aligner ?: 'minimap2'
     """
     touch "${pair_fastas.pair_id}.query.mmi"
     cat <<-END > versions.yml
     "${task.process}":
-        minimap2: 2.26
+        ${aligner}: stub
     END
     """
 }

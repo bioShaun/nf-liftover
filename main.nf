@@ -20,6 +20,24 @@ def validateRequiredParams() {
     if (params.id && params.vcf) {
         throw new IllegalArgumentException("Provide only one input type: --id or --vcf")
     }
+    def alignerEnvs = params.aligner_envs ?: [:]
+    def aligner = params.aligner ?: 'minimap2'
+    def supportedAligners = ['minimap2', 'mm2plus']
+    if (!(aligner in supportedAligners)) {
+        throw new IllegalArgumentException(
+            "Unsupported --aligner '${params.aligner}'; supported: minimap2, mm2plus.\n" +
+            "If you upgraded an existing nextflow.config, copy the `aligner_envs` block from nextflow.config.example.")
+    }
+    // Bare minimap2 is allowed without a complete aligner_envs map (legacy configs).
+    // Any other supported aligner needs a non-empty env directory name.
+    if (aligner != 'minimap2') {
+        def envName = alignerEnvs instanceof Map ? alignerEnvs.get(aligner) : null
+        if (!(envName instanceof CharSequence) || !envName.toString().trim()) {
+            throw new IllegalArgumentException(
+                "Missing aligner_envs['${aligner}'] for --aligner '${aligner}'; supported: minimap2, mm2plus.\n" +
+                "If you upgraded an existing nextflow.config, copy the `aligner_envs` block from nextflow.config.example.")
+        }
+    }
 }
 
 workflow {

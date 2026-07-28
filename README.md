@@ -14,8 +14,8 @@
 
 ```text
 源 FASTA ─┐
-          ├─ FASTA 索引 ─ 染色体配对 ─ minimap2 ─ PAF ─ chain ─┬─ ID liftover
-目标 FASTA ┘                                                    └─ VCF liftover
+          ├─ FASTA 索引 ─ 染色体配对 ─ 比对(minimap2/mm2plus) ─ PAF ─ chain ─┬─ ID liftover
+目标 FASTA ┘                                                                  └─ VCF liftover
 ```
 
 当 `--align_mode auto` 时，长度小于 `--split_threshold` 的源染色体采用整条比对，其余染色体按 `--split_size` 拆分后并行比对，再恢复为原始坐标并合并 PAF。
@@ -25,7 +25,8 @@
 - Linux 和 Bash；
 - Nextflow `>=26.0.0` 及兼容的 Java；
 - Conda 或 Mamba；
-- 任务环境中的 `samtools`、`seqkit`、`minimap2`、`transanno`、Python、pandas、Typer、Loguru 和 pyfaidx。
+- 任务环境中的 `samtools`、`seqkit`、`minimap2`、`transanno`、Python、pandas、Typer、Loguru 和 pyfaidx；
+- 可选：`mm2plus`（经 `--aligner mm2plus` 启用），需额外 conda 环境，环境名由 `params.aligner_envs` 指定。
 
 项目默认从 `/project/software/miniforge3` 查找 Conda，并使用 `nf-liftover-tools` 环境。若本机路径或环境名不同，请修改本地配置。
 
@@ -108,6 +109,7 @@ SL4.0ch02	la2093.chr02
 | `--query_fai` | 自动生成 | 可选的目标 FASTA `.fai` |
 | `--mapping` | 自动配对 | 两列染色体映射 TSV |
 | `--pair_strategy` | `suffix` | 自动配对策略：`suffix` 或 `order` |
+| `--aligner` | `minimap2` | 比对器：`minimap2`（默认）或 `mm2plus` |
 | `--align_mode` | `auto` | `auto`、`whole` 或 `split` |
 | `--split_threshold` | `100000000` | `auto` 模式切换到滑窗比对的染色体长度 |
 | `--split_size` | `10000000` | 滑窗大小 |
@@ -118,6 +120,8 @@ SL4.0ch02	la2093.chr02
 | `--max_cpus` | `16` | 单任务 CPU 上限 |
 | `--max_memory` | `60.GB` | 单任务内存上限 |
 | `--max_time` | `48.h` | 单任务运行时间上限 |
+
+窗口数远多于可用并发槽位时选 `minimap2`；窗口数少于可用槽位（少染色体 liftover、独占大节点）时选 `mm2plus`。选型依据见 [`docs/wheat-split-benchmark-spec.md`](docs/wheat-split-benchmark-spec.md) 的最终结论表。
 
 完整参数定义见 [`nextflow_schema.json`](nextflow_schema.json)。
 
