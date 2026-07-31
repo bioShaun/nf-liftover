@@ -119,6 +119,77 @@ class LiftoverByIdTests(unittest.TestCase):
         self.assertEqual(sorted_df["chrom"].astype(str).tolist(), ["chr1", "chr1", "chr2"])
         self.assertEqual(sorted_df["start"].tolist(), [10, 20, 8])
 
+    def test_fetch_ref_nucleotide_uppercases_softmasked_bases(self):
+        module = load_module("liftover_by_id_fasta", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ref_fa = Path(tmpdir) / "ref.fa"
+            ref_fa.write_text(">chr1\nACGTacgt\n", encoding="utf-8")
+
+            ref_fasta = module.Fasta(str(ref_fa))
+
+            self.assertEqual(module.fetch_ref_nucleotide(ref_fasta, "chr1", 5), "A")
+            self.assertEqual(module.fetch_ref_nucleotide(ref_fasta, "chr1", 1), "A")
+            self.assertEqual(module.fetch_ref_nucleotide(ref_fasta, "chr_missing", 1), "N")
+
+    def test_make_id_vcf_separates_sites_with_missing_contigs(self):
+        module = load_module("liftover_by_id_vcf", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            ref_fa = tmp / "ref.fa"
+            ref_fa.write_text(">chr1\nACGTacgt\n", encoding="utf-8")
+            id_file = tmp / "snp.id"
+            id_file.write_text("chr1_1\nchr_missing_5\nchr1_8\n", encoding="utf-8")
+
+            vcf = module.make_id_vcf(id_file, ref_fa)
+
+            vcf_lines = Path(vcf).read_text(encoding="utf-8").splitlines()
+            self.assertEqual(
+                [line for line in vcf_lines if not line.startswith("#")],
+                ["chr1\t1\tchr1_1\tA\t.\t.\t.\t.", "chr1\t8\tchr1_8\tT\t.\t.\t.\t."],
+            )
+            missing_file = tmp / "snp.id.missing_contigs.tsv"
+            self.assertEqual(
+                missing_file.read_text(encoding="utf-8"),
+                "chr_missing_5\tchr_missing\t5\n",
+            )
+
+    def test_make_id_vcf_raises_when_all_contigs_missing(self):
+        module = load_module("liftover_by_id_vcf_all", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            ref_fa = tmp / "ref.fa"
+            ref_fa.write_text(">chr1\nACGT\n", encoding="utf-8")
+            id_file = tmp / "snp.id"
+            id_file.write_text("SL4.0ch01_1\nSL4.0ch02_5\n", encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                module.make_id_vcf(id_file, ref_fa)
+
+            missing_file = tmp / "snp.id.missing_contigs.tsv"
+            self.assertTrue(missing_file.is_file())
+
+    def test_make_id_vcf_removes_stale_missing_contig_report(self):
+        module = load_module("liftover_by_id_vcf_rerun", REPO_ROOT / "bin" / "liftover_by_id.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            ref_fa = tmp / "ref.fa"
+            ref_fa.write_text(">chr1\nACGT\n", encoding="utf-8")
+            id_file = tmp / "snp.id"
+            missing_file = tmp / "snp.id.missing_contigs.tsv"
+
+            id_file.write_text("chr_missing_1\nchr1_1\n", encoding="utf-8")
+            module.make_id_vcf(id_file, ref_fa)
+            self.assertTrue(missing_file.is_file())
+
+            id_file.write_text("chr1_1\n", encoding="utf-8")
+            module.make_id_vcf(id_file, ref_fa)
+
+            self.assertFalse(missing_file.exists())
+
     def test_slop_and_merge_clamps_to_chromosome_bounds(self):
         module = load_module("liftover_by_id", REPO_ROOT / "bin" / "liftover_by_id.py")
 
@@ -315,7 +386,7 @@ class MergeBlastRescueTests(unittest.TestCase):
             })
             failed_reasons = (rescue_out / "panel.failed-reasons.tsv").read_text(encoding="utf-8")
             self.assertIn("NO_CHAIN;BLAST_LOW_MATCH_RATIO", failed_reasons)
-            self.assertIn("MULTIMAP;BLAST_TIED_TOP_HIT", failed_reasons)
+            self.assertIn("MULTIMAP;BLAST_AMBIGUOUS_TOP_HIT", failed_reasons)
             self.assertIn("UNEXPECTED_REF;BLAST_CHR_MAP_NOT_MATCHED+BLAST_TARGET_CHROM_NOT_IN_MAPPING", failed_reasons)
 
     def test_split_output_keeps_panel_filenames_in_rescue_outdir(self):
@@ -355,6 +426,226 @@ class MergeBlastRescueTests(unittest.TestCase):
                 "chr1a\t90\t111\nchr1b\t39\t60\n",
             )
             self.assertTrue((outdir / "panel.method.tsv").is_file())
+
+    def test_low_identity_gate_uses_pident_column(self):
+        module = load_module("merge_blast_rescue_pident", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        df = module.pd.DataFrame(
+            [
+                {"id": "s_low", "chrom": "chr1", "pos": 100, "rank": 1, "bitscore": 100.0,
+                 "match_ratio": 0.99, "pident": 90.0, "chr_map_status": "matched"},
+                {"id": "s_ok", "chrom": "chr1", "pos": 200, "rank": 1, "bitscore": 100.0,
+                 "match_ratio": 0.99, "pident": 99.0, "chr_map_status": "matched"},
+            ]
+        )
+
+        accepted, reasons, _ = module.classify_blast_rescue(df, {"s_low", "s_ok"}, {"chr1"})
+
+        self.assertEqual(reasons["s_low"], "BLAST_LOW_IDENTITY")
+        self.assertEqual(reasons["s_ok"], "BLAST_RESCUED")
+        self.assertEqual(accepted["id"].tolist(), ["s_ok"])
+
+    def test_read_selection_approximates_pident_from_mismatches(self):
+        module = load_module("merge_blast_rescue_approx", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            selection = Path(tmpdir) / "blast.selection.tsv"
+            selection.write_text(
+                "id\tchrom\tpos\trank\tbitscore\tmatch_ratio\talign_len\tmismatches\n"
+                "s1\tchr1\t100\t1\t100\t0.99\t100\t10\n",
+                encoding="utf-8",
+            )
+
+            df = module.read_selection(selection)
+
+            self.assertAlmostEqual(df.iloc[0]["pident"], 90.0)
+
+    def test_constraint_override_gate_rejects_pident_drop(self):
+        module = load_module("merge_blast_rescue_constraint", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        df = module.pd.DataFrame(
+            [
+                {"id": "s_drop", "chrom": "chr1", "pos": 100, "rank": 1, "bitscore": 100.0,
+                 "match_ratio": 0.99, "pident": 88.0, "chr_map_status": "matched",
+                 "global_best_bitscore": 200.0, "global_best_chrom": "chr2",
+                 "global_best_pident": 100.0, "global_second_best_bitscore": 50.0},
+                {"id": "s_close", "chrom": "chr1", "pos": 200, "rank": 1, "bitscore": 100.0,
+                 "match_ratio": 0.99, "pident": 99.0, "chr_map_status": "matched",
+                 "global_best_bitscore": 200.0, "global_best_chrom": "chr2",
+                 "global_best_pident": 100.0, "global_second_best_bitscore": 50.0},
+            ]
+        )
+
+        accepted, reasons, _ = module.classify_blast_rescue(df, {"s_drop", "s_close"}, {"chr1"})
+
+        self.assertEqual(reasons["s_drop"], "BLAST_LOW_IDENTITY+BLAST_CONSTRAINT_OVERRODE_BEST_HIT")
+        self.assertEqual(reasons["s_close"], "BLAST_RESCUED")
+        self.assertEqual(accepted["id"].tolist(), ["s_close"])
+
+    def test_constraint_override_gate_degrades_on_legacy_selection(self):
+        module = load_module("merge_blast_rescue_legacy", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        df = module.pd.DataFrame(
+            [
+                {"id": "s_legacy", "chrom": "chr1", "pos": 100, "rank": 1, "bitscore": 100.0,
+                 "match_ratio": 0.99, "pident": 88.0, "chr_map_status": "matched"},
+            ]
+        )
+
+        accepted, reasons, _ = module.classify_blast_rescue(
+            df, {"s_legacy"}, {"chr1"}, min_pident=80.0,
+        )
+
+        self.assertEqual(reasons["s_legacy"], "BLAST_RESCUED")
+        self.assertEqual(accepted["id"].tolist(), ["s_legacy"])
+
+    def test_chr_map_matched_but_not_global_best_deferred_to_pident_gate(self):
+        module = load_module("merge_blast_rescue_chrmap_nbg", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        def row(marker_id, pident, global_best_pident):
+            return {"id": marker_id, "chrom": "chr1", "pos": 100, "rank": 1, "bitscore": 100.0,
+                    "match_ratio": 0.99, "pident": pident,
+                    "chr_map_status": "matched_but_not_global_best",
+                    "global_best_bitscore": 200.0, "global_best_chrom": "chr2",
+                    "global_best_pident": global_best_pident, "global_second_best_bitscore": 100.0}
+
+        df = module.pd.DataFrame(
+            [
+                row("s_close", 99.0, 100.0),   # 落差 1 <= 2，采信
+                row("s_drop", 96.0, 100.0),    # 落差 4 > 2，拒绝
+            ]
+        )
+
+        accepted, reasons, _ = module.classify_blast_rescue(df, {"s_close", "s_drop"}, {"chr1"})
+
+        self.assertEqual(reasons["s_close"], "BLAST_RESCUED")
+        self.assertEqual(reasons["s_drop"], "BLAST_CONSTRAINT_OVERRODE_BEST_HIT")
+        self.assertEqual(accepted["id"].tolist(), ["s_close"])
+
+    def test_constrained_global_second_best_uses_global_ambiguity_margin(self):
+        module = load_module("merge_blast_rescue_constrained_margin", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        df = module.pd.DataFrame(
+            [
+                {"id": "s_second", "chrom": "chr1", "pos": 100, "rank": 1,
+                 "bitscore": 100.0, "match_ratio": 0.99, "pident": 99.0,
+                 "chr_map_status": "matched_but_not_global_best",
+                 "global_best_bitscore": 200.0, "global_best_pident": 100.0,
+                 "global_second_best_bitscore": 100.0},
+            ]
+        )
+
+        accepted, reasons, _ = module.classify_blast_rescue(df, {"s_second"}, {"chr1"})
+
+        self.assertEqual(reasons["s_second"], "BLAST_RESCUED")
+        self.assertEqual(accepted["id"].tolist(), ["s_second"])
+
+    def test_ambiguous_top_hit_margin(self):
+        module = load_module("merge_blast_rescue_margin", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        def row(marker_id, rank, bitscore, **extra):
+            record = {"id": marker_id, "chrom": "chr1", "pos": 100, "rank": rank, "bitscore": bitscore,
+                      "match_ratio": 0.99, "pident": 99.0, "chr_map_status": "matched"}
+            record.update(extra)
+            return record
+
+        df = module.pd.DataFrame(
+            [
+                # margin 10 < max(20, 5) → 歧义
+                row("s_tie", 1, 100.0), row("s_tie", 2, 90.0),
+                # margin 30 ≥ 20 → 放行
+                row("s_clear", 1, 100.0), row("s_clear", 2, 70.0),
+                # 单条记录但有过滤前的 global second：margin 3 < 20 → 歧义
+                row("s_global", 1, 100.0, global_best_bitscore=100.0, global_second_best_bitscore=97.0),
+                # margin = 0 的真歧义（A/B 拷贝）→ 标注 reject
+                row("s_homoeolog", 1, 100.0), row("s_homoeolog", 2, 100.0),
+                # 单条记录且无 global second → 无法判断，日志后放行
+                row("s_single", 1, 100.0),
+            ]
+        )
+        failed_ids = {"s_tie", "s_clear", "s_global", "s_homoeolog", "s_single"}
+
+        accepted, reasons, _ = module.classify_blast_rescue(df, failed_ids, {"chr1"})
+
+        self.assertEqual(reasons["s_tie"], "BLAST_AMBIGUOUS_TOP_HIT")
+        self.assertEqual(reasons["s_clear"], "BLAST_RESCUED")
+        self.assertEqual(reasons["s_global"], "BLAST_AMBIGUOUS_TOP_HIT")
+        self.assertEqual(reasons["s_homoeolog"], "BLAST_AMBIGUOUS_TOP_HIT")
+        self.assertEqual(reasons["s_single"], "BLAST_RESCUED")
+        self.assertEqual(sorted(accepted["id"].tolist()), ["s_clear", "s_single"])
+
+    def test_ref_verification_against_target_fasta(self):
+        module = load_module("merge_blast_rescue_refcheck", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 小写序列模拟软屏蔽参考（issue-001），取出后必须 upper 再比
+            seq = ["a"] * 500
+            seq[199] = "g"
+            seq[299] = "t"
+            seq[399] = "c"
+            ref_fa = Path(tmpdir) / "target.fa"
+            ref_fa.write_text(">chr1\n" + "".join(seq) + "\n", encoding="utf-8")
+            fasta = module.Fasta(str(ref_fa))
+
+            def row(marker_id, pos, alleles):
+                return {"id": marker_id, "chrom": "chr1", "pos": pos, "rank": 1, "bitscore": 100.0,
+                        "match_ratio": 0.99, "pident": 99.0, "chr_map_status": "matched", "alleles": alleles}
+
+            df = module.pd.DataFrame(
+                [
+                    row("s_pass", 100, "A/G"),       # 目标碱基 A == REF → 通过
+                    row("s_isalt", 200, "A/G"),      # 目标碱基 G == ALT → REF↔ALT 互换
+                    row("s_mismatch", 300, "A/G"),   # 目标碱基 T ≠ REF/ALT
+                    row("s_vcf", 400, "-/-"),        # alleles 无效，退回 rejected VCF 的 REF=C
+                    row("s_skip", 500, "-/-"),       # 无任何 REF 信息 → 跳过核对仍放行
+                    {**row("s_reverse", 300, "A/G"), "strand": "-"},  # 反向链 A/G → T/C
+                ]
+            )
+            failed_ids = {"s_pass", "s_isalt", "s_mismatch", "s_vcf", "s_skip", "s_reverse"}
+
+            accepted, reasons, stats = module.classify_blast_rescue(
+                df, failed_ids, {"chr1"},
+                target_fasta=fasta,
+                source_alleles={"s_vcf": ("C", None)},
+            )
+
+            self.assertEqual(reasons["s_pass"], "BLAST_RESCUED")
+            self.assertEqual(reasons["s_isalt"], "BLAST_REF_IS_ALT")
+            self.assertEqual(reasons["s_mismatch"], "BLAST_REF_MISMATCH")
+            self.assertEqual(reasons["s_vcf"], "BLAST_RESCUED")
+            self.assertEqual(reasons["s_skip"], "BLAST_RESCUED")
+            self.assertEqual(reasons["s_reverse"], "BLAST_RESCUED")
+            self.assertEqual(stats, {
+                "ref_check_passed": 3,
+                "ref_check_ref_is_alt": 1,
+                "ref_check_mismatch": 1,
+                "ref_check_skipped": 1,
+            })
+            self.assertEqual(sorted(accepted["id"].tolist()), ["s_pass", "s_reverse", "s_skip", "s_vcf"])
+
+    def test_summary_reports_ref_check_pass_rate(self):
+        module = load_module("merge_blast_rescue_summary", REPO_ROOT / "bin" / "merge_blast_rescue.py")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outdir = Path(tmpdir)
+            status_df = module.pd.DataFrame(
+                [
+                    {"id": "s1", "status": "blast_rescue", "failed_reason": ""},
+                    {"id": "s2", "status": "failed", "failed_reason": "NO_CHAIN;BLAST_REF_MISMATCH"},
+                ]
+            )
+
+            module.write_summary(status_df, outdir, "panel", ref_stats={
+                "ref_check_passed": 1,
+                "ref_check_ref_is_alt": 0,
+                "ref_check_mismatch": 1,
+                "ref_check_skipped": 0,
+            })
+
+            summary = module.pd.read_table(outdir / "panel.summary.tsv").set_index("metric")
+            self.assertEqual(summary.loc["ref_check_passed", "count"], 1)
+            self.assertEqual(summary.loc["ref_check_mismatch", "count"], 1)
+            self.assertAlmostEqual(summary.loc["ref_check_pass_rate", "percent"], 0.5)
 
 
 

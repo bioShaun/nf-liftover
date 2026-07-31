@@ -61,15 +61,27 @@ def parse_id_to_chrom_pos(snp_id: str) -> tuple[str, int]:
 
 
 def fetch_ref_nucleotide(ref_fa: Fasta, chrom: str, pos: int) -> str:
-    """从参考基因组获取指定位置的碱基。"""
-    return str(ref_fa[chrom][pos - 1 : pos].seq) if chrom in ref_fa else "N"
+    """从参考基因组获取指定位置的碱基（softmasked 参考会给小写，必须大写后再写进 VCF，
+    否则 transanno 按字面比对 REF 会全判 UNEXPECTED_REF）。"""
+    if chrom not in ref_fa:
+        return "N"
+    return str(ref_fa[chrom][pos - 1 : pos].seq).upper()
 
 
-def make_id_vcf(id_file: Path, ref_fa_path: Path) -> Path:
-    """根据 ID 文件生成最小 VCF，用于 transanno liftvcf 输入。"""
+def make_id_vcf(id_file: Path, ref_fa_path: Path, missing_out: Path | None = None) -> Path:
+    """根据 ID 文件生成最小 VCF，用于 transanno liftvcf 输入。
+
+    contig 不在参考 FASTA 里的位点不写进 VCF（写了也只会被 transanno 判
+    UNEXPECTED_REF，与真实比对失败混在一起），单独输出到 missing_out
+    （默认 <id_file>.missing_contigs.tsv）；全部位点缺失时直接报错退出。
+    """
     id_vcf_file = Path(f"{id_file}.vcf")
+    if missing_out is None:
+        missing_out = Path(f"{id_file}.missing_contigs.tsv")
 
     ref_fasta = Fasta(str(ref_fa_path))
+    missing_contig_sites: list[tuple[str, str, int]] = []
+    total_sites = 0
     with open(id_file) as id_inf, open(id_vcf_file, "w") as vcf_out:
         vcf_out.write("##fileformat=VCFv4.2\n")
         vcf_out.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
@@ -78,8 +90,29 @@ def make_id_vcf(id_file: Path, ref_fa_path: Path) -> Path:
             if not each_id:
                 continue
             chrom, pos = parse_id_to_chrom_pos(each_id)
+            total_sites += 1
+            if chrom not in ref_fasta:
+                missing_contig_sites.append((each_id, chrom, pos))
+                continue
             ref_seq = fetch_ref_nucleotide(ref_fasta, chrom, pos)
             vcf_out.write(f"{chrom}\t{pos}\t{each_id}\t{ref_seq}\t.\t.\t.\t.\n")
+
+    if missing_contig_sites:
+        with open(missing_out, "w") as missing_out_f:
+            for each_id, chrom, pos in missing_contig_sites:
+                missing_out_f.write(f"{each_id}\t{chrom}\t{pos}\n")
+        logger.warning(
+            f"{len(missing_contig_sites)}/{total_sites} 个位点的 contig 不在参考 "
+            f"{ref_fa_path} 中，未写入 VCF，已单独列出: {missing_out}；"
+            "请检查 ID 的 contig 命名是否与参考一致"
+        )
+        if len(missing_contig_sites) == total_sites:
+            raise ValueError(
+                f"所有 {total_sites} 个位点的 contig 都不在参考 {ref_fa_path} 中，"
+                "疑似 contig 命名整体不匹配，终止运行"
+            )
+    else:
+        missing_out.unlink(missing_ok=True)
 
     logger.info(f"已生成 VCF: {id_vcf_file}")
     return id_vcf_file
@@ -419,8 +452,12 @@ def main(
 
     outdir.mkdir(exist_ok=True, parents=True)
 
-    # 1. 生成 VCF
-    vcf = make_id_vcf(id_file, ref_fa)
+    # 1. 生成 VCF；contig 缺失的位点单独列到 outdir，随 out/* 一起发布
+    vcf = make_id_vcf(
+        id_file,
+        ref_fa,
+        missing_out=outdir / f"{id_file.name}.missing_contigs.tsv",
+    )
 
     # 2. 运行 transanno liftvcf
     probe = probe_name if probe_name else id_file.stem
