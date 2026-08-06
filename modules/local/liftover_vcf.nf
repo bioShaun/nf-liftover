@@ -5,8 +5,6 @@ process LIFTOVER_VCF {
     label 'tool_ngs'
     label 'medium_mem'
 
-    publishDir "${params.outdir}/liftover", mode: 'copy', saveAs: { file -> file.tokenize('/').last() }
-
     input:
     vcf_file: Path
     chain: Path

@@ -6,8 +6,6 @@ process COMBINE_ALL_PAFS {
     label 'small_mem'
 
     // Publish merged PAF only when --publish_paf is true (default false for production).
-    publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.paf', enabled: params.publish_paf
-
     input:
     paf_files
 

@@ -5,8 +5,6 @@ process WRITE_RUN_META {
     label 'tool_py'
     label 'small_mem'
 
-    publishDir "${params.outdir}", mode: 'copy', pattern: 'run_meta.yml'
-
     input:
     versions_yml: Path
     meta_json: String

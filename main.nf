@@ -9,6 +9,9 @@ include { LIFTOVER_VCF     } from './modules/local/liftover_vcf'
 include { COLLATE_VERSIONS } from './modules/local/collate_versions'
 include { WRITE_CHAIN_META } from './modules/local/write_chain_meta'
 include { WRITE_RUN_META   } from './modules/local/write_run_meta'
+// nf-schema plugin: schema-level validation gate. Hand-written validateParameters() runs
+// first because CI/nf-test assert its custom error strings; schemaValidate() runs second.
+include { validateParameters as schemaValidate; paramsHelp; paramsSummaryLog } from 'plugin/nf-schema'
 
 def helpMessage() {
     return """
@@ -259,134 +262,178 @@ def chainMetaPayload(mode) {
 }
 
 workflow {
+    main:
     if (isTruthyHelp(params.help)) {
         log.info helpMessage()
-        return
-    }
-
-    validateParameters()
-
-    mapping_ch = params.mapping
-        ? channel.value(record(mapping_file: file(params.mapping)))
-        : channel.value(record(mapping_file: null))
-
-    split_liftover_ch = channel.value(record(
-        split_bed: params.split_bed ? file(params.split_bed) : null,
-        split_genome_fai: params.split_genome_fai ? file(params.split_genome_fai) : null
-    ))
-
-    prepared = PREPARE_GENOMES(
-        channel.of(record(role: 'ref', fasta: file(params.ref_fa), fai: params.ref_fai ? file(params.ref_fai) : null)),
-        channel.of(record(role: 'query', fasta: file(params.query_fa), fai: params.query_fai ? file(params.query_fai) : null)),
-        mapping_ch,
-        channel.value(params.pair_strategy)
-    )
-
-    chain_meta_opt_ch = channel.value(record(
-        chain_meta_file: params.chain_meta ? file(params.chain_meta) : null
-    ))
-
-    if (params.chain) {
-        // Reuse an existing chain; skip expensive genome alignment.
-        // WRITE_CHAIN_META validates chain headers against ref/query FAI (names, lengths, orientation).
-        chain_ch = channel.value(file(params.chain))
-        def reuseMetaJson = groovy.json.JsonOutput.toJson(chainMetaPayload('reuse'))
-        chain_meta = WRITE_CHAIN_META(
-            prepared.ref_fa,
-            prepared.query_fa,
-            prepared.ref_fai,
-            prepared.query_fai,
-            prepared.chrom_pairs,
-            chain_ch,
-            channel.value('reuse'),
-            channel.value(reuseMetaJson),
-            chain_meta_opt_ch
-        )
-        aligned_versions = chain_meta.versions
-        // Prefer the published/validated copy for liftover so paths are consistent.
-        chain_for_lift = chain_meta.chain_out
+        // Supplementary schema-based help from nf-schema.
+        log.info paramsHelp()
+        chain_all_ch    = channel.empty()
+        chain_meta_y_ch = channel.empty()
+        paf_ch          = channel.empty()
+        lifted_files_ch = channel.empty()
+        versions_yml_ch = channel.empty()
+        run_meta_ch     = channel.empty()
     } else {
-        aligned = ALIGN_AND_CHAIN(
-            prepared.ref_fa,
-            prepared.query_fa,
-            prepared.ref_fai,
-            prepared.query_fai,
-            prepared.chrom_pairs
+        validateParameters()
+
+        // nf-schema schema-level validation (types, enums, anyOf id/vcf) as a hard second
+        // gate. The plugin is declared in the config `plugins` block, so if it could not
+        // be loaded the run would have aborted at startup long before this point — there
+        // is no offline fallback to catch here.
+        schemaValidate()
+        // Structured parameter summary
+        log.info paramsSummaryLog(workflow)
+
+        mapping_ch = params.mapping
+            ? channel.value(record(mapping_file: file(params.mapping)))
+            : channel.value(record(mapping_file: null))
+
+        split_liftover_ch = channel.value(record(
+            split_bed: params.split_bed ? file(params.split_bed) : null,
+            split_genome_fai: params.split_genome_fai ? file(params.split_genome_fai) : null
+        ))
+
+        prepared = PREPARE_GENOMES(
+            channel.of(record(role: 'ref', fasta: file(params.ref_fa), fai: params.ref_fai ? file(params.ref_fai) : null)),
+            channel.of(record(role: 'query', fasta: file(params.query_fa), fai: params.query_fai ? file(params.query_fai) : null)),
+            mapping_ch,
+            channel.value(params.pair_strategy)
         )
-        def builtMetaJson = groovy.json.JsonOutput.toJson(chainMetaPayload('built'))
-        chain_meta = WRITE_CHAIN_META(
-            prepared.ref_fa,
-            prepared.query_fa,
-            prepared.ref_fai,
-            prepared.query_fai,
-            prepared.chrom_pairs,
-            aligned.chain,
-            channel.value('built'),
-            channel.value(builtMetaJson),
-            channel.value(record(chain_meta_file: null))
+
+        chain_meta_opt_ch = channel.value(record(
+            chain_meta_file: params.chain_meta ? file(params.chain_meta) : null
+        ))
+
+        if (params.chain) {
+            // Reuse an existing chain; skip expensive genome alignment.
+            // WRITE_CHAIN_META validates chain headers against ref/query FAI (names, lengths, orientation).
+            chain_ch = channel.value(file(params.chain))
+            def reuseMetaJson = groovy.json.JsonOutput.toJson(chainMetaPayload('reuse'))
+            chain_meta = WRITE_CHAIN_META(
+                prepared.ref_fa,
+                prepared.query_fa,
+                prepared.ref_fai,
+                prepared.query_fai,
+                prepared.chrom_pairs,
+                chain_ch,
+                channel.value('reuse'),
+                channel.value(reuseMetaJson),
+                chain_meta_opt_ch
+            )
+            aligned_versions = chain_meta.versions
+            // Prefer the published/validated copy for liftover so paths are consistent.
+            chain_for_lift = chain_meta.chain_out
+            // No alignment in reuse mode: never publish all.paf.
+            paf_ch = channel.empty()
+        } else {
+            aligned = ALIGN_AND_CHAIN(
+                prepared.ref_fa,
+                prepared.query_fa,
+                prepared.ref_fai,
+                prepared.query_fai,
+                prepared.chrom_pairs
+            )
+            def builtMetaJson = groovy.json.JsonOutput.toJson(chainMetaPayload('built'))
+            chain_meta = WRITE_CHAIN_META(
+                prepared.ref_fa,
+                prepared.query_fa,
+                prepared.ref_fai,
+                prepared.query_fai,
+                prepared.chrom_pairs,
+                aligned.chain,
+                channel.value('built'),
+                channel.value(builtMetaJson),
+                channel.value(record(chain_meta_file: null))
+            )
+            aligned_versions = aligned.versions.mix(chain_meta.versions)
+            chain_for_lift = aligned.chain
+            paf_ch = params.publish_paf ? aligned.paf : channel.empty()
+        }
+
+        if (params.vcf) {
+            lifted = LIFTOVER_VCF(
+                channel.value(file(params.vcf)),
+                chain_for_lift,
+                prepared.ref_fa,
+                prepared.query_fa,
+                prepared.ref_fai,
+                prepared.query_fai
+            )
+        } else {
+            lifted = LIFTOVER(
+                channel.value(file(params.id)),
+                chain_for_lift,
+                prepared.ref_fa,
+                prepared.query_fa,
+                prepared.ref_fai,
+                prepared.query_fai,
+                split_liftover_ch
+            )
+        }
+
+        ch_versions = prepared.versions
+            .mix(aligned_versions)
+            .mix(lifted.versions)
+            .collect()
+
+        // Single-output process: call returns the versions path channel directly.
+        versions_yml_ch = COLLATE_VERSIONS(workflow.nextflow.version.toString(), ch_versions)
+
+        def gitMeta = gitProvenance(workflow.projectDir)
+        def runMeta = [
+            id               : params.id?.toString(),
+            vcf              : params.vcf?.toString(),
+            ref_fa           : params.ref_fa?.toString(),
+            query_fa         : params.query_fa?.toString(),
+            mapping          : params.mapping?.toString(),
+            chain            : params.chain?.toString(),
+            chain_meta       : params.chain_meta?.toString(),
+            pair_strategy    : params.pair_strategy?.toString(),
+            aligner          : (params.aligner ?: 'minimap2').toString(),
+            align_mode       : params.align_mode?.toString(),
+            split_threshold  : params.split_threshold?.toString(),
+            split_size       : params.split_size?.toString(),
+            flank            : params.flank?.toString(),
+            publish_paf      : params.publish_paf?.toString(),
+            outdir           : params.outdir?.toString(),
+            profile          : workflow.profile?.toString(),
+            manifest_version : workflow.manifest.version?.toString() ?: 'unknown',
+            git_commit       : workflow.commitId?.toString() ?: gitMeta.commit,
+            git_dirty        : gitMeta.dirty,
+            revision         : workflow.revision?.toString() ?: workflow.manifest.version?.toString() ?: 'unknown',
+            run_name         : workflow.runName?.toString(),
+            command_line     : workflow.commandLine?.toString(),
+        ]
+        def runMetaJson = groovy.json.JsonOutput.toJson(runMeta)
+
+        // Single-output process: call returns the run_meta path channel directly.
+        run_meta_ch = WRITE_RUN_META(
+            versions_yml_ch,
+            channel.value(runMetaJson)
         )
-        aligned_versions = aligned.versions.mix(chain_meta.versions)
-        chain_for_lift = aligned.chain
+
+        chain_all_ch    = chain_meta.chain_out
+        chain_meta_y_ch = chain_meta.meta
+        // The emitted channel is a single list value (files('out/*')); flatten so each
+        // file is published individually under <outdir>/liftover/ with its basename.
+        lifted_files_ch = lifted.files.flatten()
     }
 
-    if (params.vcf) {
-        lifted = LIFTOVER_VCF(
-            channel.value(file(params.vcf)),
-            chain_for_lift,
-            prepared.ref_fa,
-            prepared.query_fa,
-            prepared.ref_fai,
-            prepared.query_fai
-        )
-    } else {
-        lifted = LIFTOVER(
-            channel.value(file(params.id)),
-            chain_for_lift,
-            prepared.ref_fa,
-            prepared.query_fa,
-            prepared.ref_fai,
-            prepared.query_fai,
-            split_liftover_ch
-        )
-    }
+    publish:
+    chain_all    = chain_all_ch
+    chain_meta_y = chain_meta_y_ch
+    paf_out      = paf_ch
+    lifted_files = lifted_files_ch
+    versions_yml = versions_yml_ch
+    run_meta     = run_meta_ch
+}
 
-    ch_versions = prepared.versions
-        .mix(aligned_versions)
-        .mix(lifted.versions)
-        .collect()
-
-    // Single-output process: call returns the versions path channel directly.
-    versions_yml_ch = COLLATE_VERSIONS(workflow.nextflow.version.toString(), ch_versions)
-
-    def gitMeta = gitProvenance(workflow.projectDir)
-    def runMeta = [
-        id               : params.id?.toString(),
-        vcf              : params.vcf?.toString(),
-        ref_fa           : params.ref_fa?.toString(),
-        query_fa         : params.query_fa?.toString(),
-        mapping          : params.mapping?.toString(),
-        chain            : params.chain?.toString(),
-        chain_meta       : params.chain_meta?.toString(),
-        pair_strategy    : params.pair_strategy?.toString(),
-        aligner          : (params.aligner ?: 'minimap2').toString(),
-        align_mode       : params.align_mode?.toString(),
-        split_threshold  : params.split_threshold?.toString(),
-        split_size       : params.split_size?.toString(),
-        flank            : params.flank?.toString(),
-        publish_paf      : params.publish_paf?.toString(),
-        outdir           : params.outdir?.toString(),
-        profile          : workflow.profile?.toString(),
-        manifest_version : workflow.manifest.version?.toString() ?: 'unknown',
-        git_commit       : workflow.commitId?.toString() ?: gitMeta.commit,
-        git_dirty        : gitMeta.dirty,
-        revision         : workflow.revision?.toString() ?: workflow.manifest.version?.toString() ?: 'unknown',
-        run_name         : workflow.runName?.toString(),
-        command_line     : workflow.commandLine?.toString(),
-    ]
-    def runMetaJson = groovy.json.JsonOutput.toJson(runMeta)
-
-    WRITE_RUN_META(
-        versions_yml_ch,
-        channel.value(runMetaJson)
-    )
+output {
+    chain_all    { path 'chain' }
+    chain_meta_y { path 'chain' }
+    paf_out      { path 'chain' }
+    // >> operator publishes each file at the exact target name (flattens the out/ prefix)
+    lifted_files { path { f -> f >> "liftover/${f.name}" } }
+    versions_yml { path '.' }
+    run_meta     { path '.' }
 }

@@ -5,6 +5,10 @@ manifest {
     nextflowVersion = '>=26.0.0'
 }
 
+plugins {
+    id 'nf-schema@2.7.2'
+}
+
 params {
     help            = false
     id              = null
@@ -46,6 +50,15 @@ params {
     max_cpus   = 16
     max_memory = '60.GB'
     max_time   = '48.h'
+}
+
+// Workflow outputs are published under this directory (NF26 output block).
+outputDir = "${params.outdir}"
+// Preserve the legacy publishDir `mode: 'copy'` semantics for workflow outputs.
+workflow {
+    output {
+        mode = 'copy'
+    }
 }
 
 includeConfig 'conf/base.config'

@@ -5,8 +5,6 @@ process PAF_TO_CHAIN {
     label 'tool_ngs'
     label 'small_mem'
 
-    publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.chain'
-
     input:
     paf: Path
 
