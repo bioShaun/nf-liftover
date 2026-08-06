@@ -146,12 +146,14 @@ bash tests/data/tomato-smoke/run-smoke.sh chain
 
 ## 参数校验
 
-流程入口实现了内置 `--help` 与 fail-fast 校验（不依赖 `nf-schema` 插件，离线环境可直接运行）：
+流程入口实现了内置 `--help` 与 fail-fast 校验（双层：手写校验先行，随后由 `nf-schema` 插件按 `nextflow_schema.json` 做 schema 级校验）：
 
 - 必填：`--ref_fa`、`--query_fa`，以及 `--id` / `--vcf` 二选一；
 - 枚举：`--align_mode`、`--pair_strategy`；
 - 范围：`--split_threshold`、`--split_size`、`--flank`、`--max_cpus`；
 - 文件存在性：FASTA、FAI、mapping、chain、ID/VCF、split BED；
 - 互斥：VCF 模式不可同时提供 `--split_bed` / `--split_genome_fai`。
+
+schema 层（`nf-schema@2.7.2`，在 `nextflow.config` 的 `plugins` 块声明，为启动依赖）额外校验参数类型、`--id` / `--vcf` 的 anyOf 互斥以及 `split_genome_fai → split_bed` 依赖关系。离线环境需预先在 `~/.nextflow/plugins/` 缓存该插件（本机有网时首跑自动拉取），否则 Nextflow 在启动解析阶段即失败。
 
 `nextflow_schema.json` 与 `nextflow.config` / README 中的默认值保持同步，供文档与外部工具使用。

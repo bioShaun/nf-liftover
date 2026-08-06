@@ -18,7 +18,7 @@
 
 - 不改变默认行为：默认仍是 `minimap2`，默认路径的输出必须逐字节不变。
 - 不调整 `split_mem` 资源（`cpus` / `memory`）。基准文档指出这是收益更大的独立议题（P=16 的 2.59 h vs 当前 P=4 的 6.41 h，约 2.5x），但应单开一轮评估，不混入本次。
-- 不接入 `nf-schema` 插件（见 P2 观察项，属独立议题）。
+- 不接入 `nf-schema` 插件（见 P2 观察项，属独立议题）。<!-- 2026-08-06 更新：nf-schema 已随 NF26 迁移接入（plugins nf-schema@2.7.2 + main.nf schemaValidate() 第二道门），本非目标已失效。 -->
 - 不新增第三个 aligner，不改动 `conf/modules.config` 的 `ext.args`。
 - 不重跑基准。阶段 A-D 数据已定稿，本轮只做工程收尾。
 
@@ -26,7 +26,7 @@
 
 ### P0: 存量 `nextflow.config` 缺少新参数导致启动即崩
 
-`.gitignore:14` 将 `/nextflow.config` 排除在版本控制外，用户配置由 `nextflow.config.example` 拷贝而来且此后独立演进。本次新增的两个参数只写在 example（`nextflow.config.example:18` 和 `:34-37`），存量用户的配置里不存在。
+`.gitignore:14` 将 `/nextflow.config` 排除在版本控制外，用户配置由 `nextflow.config.example` 拷贝而来且此后独立演进。本次新增的两个参数只写在 example（`nextflow.config.example:21` 和 `:41-44`），存量用户的配置里不存在。
 
 证据：
 
@@ -89,11 +89,11 @@ If you upgraded an existing nextflow.config, copy the `aligner_envs` block from 
 
 ### P1: `--aligner` 无测试覆盖
 
-`nf-test.config` 的 `configFile` 指向 `nextflow.config.example`、`profile` 为 `test`，因此新参数在测试环境中天然可见；`conf/test.config:30-34` 也已经按 `params.aligner` 准备好两套 bioconda 依赖。当前 `tests/tomato_smoke.nf.test` 的所有 case 都跑默认路径，mm2plus 分支与非法取值分支均未被执行过。
+`nf-test.config` 的 `configFile` 指向 `nextflow.legacy.config`、`profile` 为 `test`，因此新参数在测试环境中天然可见；`conf/test.config:30-34` 也已经按 `params.aligner` 准备好两套 bioconda 依赖。当前 `tests/tomato_smoke.nf.test` 的所有 case 都跑默认路径，mm2plus 分支与非法取值分支均未被执行过。
 
 要求：
 
-- 新增一个 mm2plus smoke case，参数与既有「runs tomato fixture end to end」一致，仅追加 `aligner = "mm2plus"`。放进独立文件 `tests/tomato_smoke_mm2plus.nf.test`，使本机未安装 mm2plus 时可以只跑 `nf-test test tests/tomato_smoke.nf.test` 而不受影响（仓库当前无 CI 配置，测试由人工本地执行，故不引入 tag 或 profile 机制）。
+- 新增一个 mm2plus smoke case，参数与既有「runs tomato fixture end to end」一致，仅追加 `aligner = "mm2plus"`。放进独立文件 `tests/tomato_smoke_mm2plus.nf.test`，使本机未安装 mm2plus 时可以只跑 `nf-test test tests/tomato_smoke.nf.test` 而不受影响（`.github/workflows/ci.yml` 已接入 CI，测试也可由人工本地执行，故不引入 tag 或 profile 机制）。
 - 在 `tests/tomato_smoke.nf.test` 中新增一个非法取值 case，如 `aligner = "bwa"`，断言 `workflow.failed` 且 stdout 含受支持取值列表。该 case 不依赖 mm2plus，留在主文件。
 - mm2plus case 的断言**不得**对 `chain/all.chain` 做逐字节或哈希比较。`docs/mm2plus-benchmark-spec.md:235` 已指出 chain 文件跨 aligner 不可 byte 比较（chain id 编号与记录顺序会变）。断言限于：`workflow.success`、`trace.failed().size() == 0`、`all.chain` 存在且非空，以及 liftover 产物（`.id` / `.bed` / `.snpcalling.bed`）文本与默认 case 相同——后者是真正的等价性判据，坐标级结果应当一致。
 验收：
@@ -118,6 +118,8 @@ If you upgraded an existing nextflow.config, copy the `aligner_envs` block from 
 - 两份文档不再出现无限定语的「不新增 `--aligner` 开关」表述。
 
 ### P2（观察项，本轮不实施）: `nextflow_schema.json` 未接入
+
+> **2026-08-06 更新：本观察项已关闭。** nf-schema 已随 NF26 迁移接入（双 config 声明 `plugins { id 'nf-schema@2.7.2' }`，`main.nf` 以 `schemaValidate()` 作手写校验之后的 schema 级第二道门），schema 的 `default`/`enum`/anyOf 现在有运行时作用。手写校验未移除（CI/nf-test 断言其自定义错误串）。以下为审计时点的原始记录，保留供历史追溯。
 
 全仓库无 `plugins` 块，`main.nf` 也没有 `validateParameters()` 调用：
 

@@ -6,6 +6,10 @@
 >
 > 同时把 nextflow24 的写法（`baseDir`、`check_max` 闭包、`publishDir`、手写 help/参数校验）迁移到 nextflow26（DSL2 strict、`projectDir`、`nf-schema` 校验、workflow `output:` 块、subworkflows、topic channels）。
 
+> ⚠️ 本文档为历史规划文档，部分内容已与实际代码漂移。执行状态与偏差见 [drift-audit-2026-08-05.md](drift-audit-2026-08-05.md)。以下条目已由审计标记为已过时/未落地：L87/L120 plugins nf-schema（全仓库无 plugins 块）、L91/L224-225 conda_envs 映射（实际 nf-liftover-tools）、L98-101 目标模块树（实际全在 modules/local/）、L102 restore_split_paf.nf、L107-108 assets/、L161 --by-name-suffix（实际 --strategy）、L197-207 output 块语法（24-04 预览版，NF26 用 target-based 形式）、L248/L363 usage.md 含插件安装步骤（实际没有）、L285-290/L313/L335 番茄数据已就位（目录不存在）。
+>
+> ✅ 2026-08-06 更新：NF26 迁移收尾已落地——双 config 声明 `plugins { id 'nf-schema@2.7.2' }`（L87/L120 目标达成，手写校验保留为第一道门）；publishDir 已全部迁移至 workflow `output:` 块（L124/L197-207/L329/L359，按 target-based 语法）；`nextflow_schema.json` 已补 `minimap2_args` / anyOf(id∨vcf) / dependencies。验收：39 python 单测 + 12/12 nf-test + -stub 双向发布全过。
+
 ## 升级目标
 
 1. **更少步骤**：用户只跑一条命令；染色体拆分、对应表、whole/split 决策、liftover 全部内置（`prepare-probe-dir.sh` 暂不纳入，留给用户在流水线后手工执行）。
