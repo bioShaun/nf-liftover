@@ -5,8 +5,6 @@ process LIFTOVER_BY_ID {
     label 'tool_py_ngs'
     label 'medium_mem'
 
-    publishDir "${params.outdir}/liftover", mode: 'copy', saveAs: { file -> file.tokenize('/').last() }
-
     input:
     id_file: Path
     chain: Path

@@ -86,6 +86,8 @@ nextflow run ~/scripts/ngs-utils-v24/workflows/align_chromosomes-whole.nf \
   -resume
 ```
 
+<!-- legacy-known-drift: slurm_new2 从未存在，实际 profile 为 slurm / slurm_new，详见 drift-audit-2026-08-05.md -->
+
 ### 单条染色体大于等于 100 Mb
 
 ```bash
@@ -97,6 +99,8 @@ nextflow run ~/scripts/ngs-utils-v24/workflows/align_chromosomes.nf \
   -profile slurm_new2 \
   -resume
 ```
+
+<!-- legacy-known-drift: slurm_new2 从未存在，实际 profile 为 slurm / slurm_new，详见 drift-audit-2026-08-05.md -->
 
 说明：`--ref_fai` 为 **Query 参考基因组**对应的 `.fai` 路径，请按实际部署修改。
 

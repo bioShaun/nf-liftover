@@ -26,7 +26,7 @@
 - Linux 和 Bash；
 - Nextflow `>=26.0.0` 及兼容的 Java；
 - Conda 或 Mamba；
-- 任务环境中的 `samtools`、`seqkit`、`minimap2`、`transanno`、Python、pandas、Typer、Loguru 和 pyfaidx；
+- 任务环境中的 `samtools`、`minimap2`、`transanno`、Python、pandas、Typer、Loguru 和 pyfaidx；
 - 可选：`mm2plus`（经 `--aligner mm2plus` 启用），需额外 conda 环境，环境名由 `params.aligner_envs` 指定。
 
 ### 可复现环境

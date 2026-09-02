@@ -14,7 +14,7 @@
 - Python 单元测试共 21 项，使用 `nf-liftover-tools` 环境运行时全部通过。
 - 缺少 `--ref_fa` 等必填参数时，入口会以非零状态退出并给出错误信息。
 - ID 模式 smoke 流程可以完成 FASTA 索引、染色体配对、minimap2 比对和 chain 生成，但在 `LIFTOVER_BY_ID` 阶段因任务使用了错误的 Python 环境而失败。
-- 仓库包含 ID、VCF、whole、split 和 split-coordinate 等 nf-test 场景，但当前约定的 `nextflow26` 环境中没有可直接调用的 `nf-test`。
+- 仓库包含 ID、VCF、whole、split 和 split-coordinate 等 nf-test 场景，`nextflow26` 环境现已安装 `nf-test 0.9.5`（2026-08-05 审计核实，见 [drift-audit-2026-08-05.md](drift-audit-2026-08-05.md)）。
 
 ## 优先级总览
 

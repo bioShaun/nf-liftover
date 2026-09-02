@@ -4,12 +4,15 @@
 
 当前 `nf-liftover` 已经具备 Nextflow DSL2 typed workflow、`nf-schema` 参数校验、subworkflow 拆分和 smoke fixture。但最近检查发现，仓库里仍混入本机/部署环境配置，部分运行语义会浪费资源或影响结果正确性，后续模块化也缺少明确落地顺序。
 
+> **勘误（2026-08-05 审计，见 [drift-audit-2026-08-05.md](drift-audit-2026-08-05.md)）**：本段所称「`nf-schema` 参数校验」在审计时实际未接入（当时全仓库无 `plugins` 块，`main.nf:163` 为手写 `validateParameters()`）。**2026-08-06 更新**：nf-schema 已随 NF26 迁移接入——双 config 声明 `plugins { id 'nf-schema@2.7.2' }`，`main.nf` 在手写校验之后以 `schemaValidate()` 作 schema 级第二道门；手写 help 与 `validateParameters()` 仍保留（CI/nf-test 断言其自定义错误串），本段以「删除手写 help」为前提的条目仍待评估。
+
 本 spec 用于约束下一轮修复：先保证仓库可提交、测试可复现、运行失败行为合理，再逐步迁移到更接近 nf-core 风格的模块化结构。
 
 ## 目标
 
 1. 仓库提交 example 配置，不提交个人或单机 `nextflow.config`。
 2. 删除手写 help 和 `System.exit(0)`，由 `nf-schema` 管理参数帮助与校验。
+   <!-- 勘误（2026-08-05 审计）：审计时 nf-schema 未接入；main.nf help 分支实际用 `return`（:262-265），无 System.exit(0)。2026-08-06 更新：nf-schema 已接入，手写校验仍保留为第一道门，本条「删除手写 help」目标待评估。 -->
 3. 只对资源或信号类失败做 retry，避免确定性失败重复消耗资源。
 4. 为 retry 后的资源请求设置硬上限。
 5. 修复可选输入文件 staging、split BED 跨边界坐标转换等正确性问题。
@@ -50,6 +53,8 @@ cp nextflow.config.example nextflow.config
 
 `main.nf` 中 `if (params.help)` 分支调用 `System.exit(0)`，会强行终止 JVM，并绕过 Nextflow 正常生命周期。项目已经使用 `nf-schema`，应删除整段手写 help。
 
+> **勘误（2026-08-05 审计，见 [drift-audit-2026-08-05.md](drift-audit-2026-08-05.md)）**：上述两处与审计时现状不符。(1) `main.nf` help 分支实际使用 `return`（:262-265），并不存在 `System.exit(0)`。(2) 审计时全仓库无 `plugins` 块，`nf-schema` 未接入，`main.nf:163` 为手写 `validateParameters()`。**2026-08-06 更新**：nf-schema 已接入（见文首勘误），但手写 help 与手写校验仍先行保留，本条「删除整段手写 help」的目标尚未执行。
+
 要求：
 
 - 删除 `main.nf` 中 `params.help` 条件分支。
@@ -84,6 +89,8 @@ process {
 ### P0: 缺少资源上限
 
 `large_mem` 使用 `{ 60.GB * task.attempt }`，第三次尝试会请求 180GB，可能超出节点限制，也与 `params.max_memory` 的语义冲突。
+
+> **勘误（2026-08-05 审计，见 [drift-audit-2026-08-05.md](drift-audit-2026-08-05.md)）**：`conf/base.config:45` 实际为 `{ 20.GB * task.attempt }`（20→40→60），非 60.GB。本条描述的 180GB 风险不成立；资源上限议题仍可推进，但需以实际值为基准。
 
 要求：
 
@@ -278,7 +285,7 @@ minimap2、transanno 等 CLI 参数硬编码在 process script 中，不便于�
 ```bash
 git ls-files nextflow.config
 git ls-files nextflow.config.example
-mamba run -n probe-design pytest tests/test_core_helpers.py
+mamba run -n tc-probe-design-dev pytest tests/test_core_helpers.py
 ```
 
 ### 阶段 2: P0 运行语义修复
@@ -294,7 +301,7 @@ mamba run -n probe-design pytest tests/test_core_helpers.py
 验证：
 
 ```bash
-mamba run -n probe-design pytest tests/test_core_helpers.py
+mamba run -n tc-probe-design-dev pytest tests/test_core_helpers.py
 mamba run -n nextflow nf-test test tests/tomato_smoke.nf.test
 ```
 

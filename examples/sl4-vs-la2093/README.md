@@ -6,10 +6,12 @@
 - `/public/data/genomes/solanum_lycopersicum_LA2093/S_lycopersicum_chromosomes.4.00.fa`
 - `/public/data/genomes/solanum_lycopersicum_LA2093/rename.genome.fa`
 
+> ⚠️ **注意（2026-08-05 审计，见 [drift-audit-2026-08-05.md](../../docs/drift-audit-2026-08-05.md)）**：上述 `/public/data/genomes/solanum_lycopersicum_LA2093/` 目录在当前主机上不存在（复数和单数 genome 路径均已核实缺失）。运行前需自备 `--id` / `--ref_fa` / `--query_fa` 指向实际可用的文件，或恢复 LA2093 数据集。`run.sh` 中的路径仅作格式示例。
+
 运行：
 
 ```bash
-conda activate nextflow
+conda activate nextflow26
 bash examples/sl4-vs-la2093/run.sh
 ```
 

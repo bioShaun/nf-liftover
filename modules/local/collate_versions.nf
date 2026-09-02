@@ -4,8 +4,6 @@ process COLLATE_VERSIONS {
     label 'tool_py'
     label 'small_mem'
 
-    publishDir "${params.outdir}", mode: 'copy'
-
     input:
     nextflow_version: String
     versions_files

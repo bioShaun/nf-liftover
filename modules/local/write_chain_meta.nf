@@ -6,9 +6,6 @@ process WRITE_CHAIN_META {
     label 'small_mem'
 
     // Always publish metadata and a copy of the chain (including reuse runs).
-    publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'chain_meta.yml'
-    publishDir "${params.outdir}/chain", mode: 'copy', pattern: 'all.chain'
-
     input:
     ref_fa: Path
     query_fa: Path

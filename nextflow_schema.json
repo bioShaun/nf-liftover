@@ -66,6 +66,11 @@
       "default": "auto",
       "description": "Alignment mode: auto chooses whole or split per chromosome, whole aligns complete chromosomes, split aligns sliding windows"
     },
+    "minimap2_args": {
+      "type": "string",
+      "default": "-cx asm5 --cs",
+      "description": "Default minimap2/mm2plus alignment args"
+    },
     "split_threshold": {
       "type": "integer",
       "default": 100000000,
@@ -120,5 +125,12 @@
     }
   },
   "required": ["ref_fa", "query_fa"],
+  "anyOf": [
+    { "required": ["id"], "properties": { "vcf": { "const": null } } },
+    { "required": ["vcf"], "properties": { "id": { "const": null } } }
+  ],
+  "dependencies": {
+    "split_genome_fai": ["split_bed"]
+  },
   "additionalProperties": true
 }
