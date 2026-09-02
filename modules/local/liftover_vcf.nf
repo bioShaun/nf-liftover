@@ -38,6 +38,8 @@ process LIFTOVER_VCF {
     prefix=\${prefix%.bcf}
     out_vcf="out/\${prefix}.vcf.gz"
     rejected_vcf="out/rejected.\${prefix}.vcf.gz"
+    sorted_out_vcf="out/\${prefix}.sorted.tmp.vcf.gz"
+    sorted_rejected_vcf="out/rejected.\${prefix}.sorted.tmp.vcf.gz"
 
     transanno liftvcf \
       --original-assembly liftover_ref.fa \
@@ -49,9 +51,13 @@ process LIFTOVER_VCF {
       ${args}
 
     if [ -s "\${out_vcf}" ]; then
+      bcftools sort -Oz -o "\${sorted_out_vcf}" -T "\${TMPDIR}/bcftools-sort-success.XXXXXX" "\${out_vcf}"
+      mv -f "\${sorted_out_vcf}" "\${out_vcf}"
       tabix -f -p vcf "\${out_vcf}"
     fi
     if [ -s "\${rejected_vcf}" ]; then
+      bcftools sort -Oz -o "\${sorted_rejected_vcf}" -T "\${TMPDIR}/bcftools-sort-rejected.XXXXXX" "\${rejected_vcf}"
+      mv -f "\${sorted_rejected_vcf}" "\${rejected_vcf}"
       tabix -f -p vcf "\${rejected_vcf}"
     fi
 

@@ -20,6 +20,37 @@ def load_module(name: str, path: Path):
     return module
 
 
+class RepairVcfHeaderTests(unittest.TestCase):
+    def test_infers_missing_info_types_and_adds_fai_contigs(self):
+        helper = REPO_ROOT / "bin" / "repair_vcf_header.py"
+        self.assertTrue(helper.exists(), "repair_vcf_header.py is required")
+        module = load_module("repair_vcf_header", helper)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            vcf = tmp / "input.vcf"
+            fai = tmp / "ref.fa.fai"
+            out = tmp / "header.txt"
+            vcf.write_text(
+                "##fileformat=VCFv4.2\n"
+                "##INFO=<ID=TSA,Number=1,Type=String,Description=\"existing\">\n"
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+                "1\t10\t.\tA\tG\t.\tPASS\tHapMap2;TSA=SNV\n"
+                "1\t20\t.\tC\tT\t.\tPASS\tPanzea_2.7GBS;TSA=SNV\n",
+                encoding="utf-8",
+            )
+            fai.write_text("1\t100\t0\t80\t81\nchr2\t200\t0\t80\t81\n", encoding="utf-8")
+            summary = module.repair_header(vcf, fai, out)
+            text = out.read_text(encoding="utf-8")
+            self.assertIn('##INFO=<ID=HapMap2,Number=0,Type=Flag', text)
+            self.assertIn('##INFO=<ID=Panzea_2.7GBS,Number=0,Type=Flag', text)
+            self.assertEqual(text.count('##INFO=<ID=TSA,'), 1)
+            self.assertIn('##contig=<ID=1,length=100>', text)
+            self.assertIn('##contig=<ID=chr2,length=200>', text)
+            self.assertTrue(text.rstrip().endswith("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"))
+            self.assertEqual(summary["missing_info_added"], 2)
+            self.assertEqual(summary["missing_contigs_added"], 2)
+
+
 class DeriveChromPairsTests(unittest.TestCase):
     def test_derives_pairs_by_shared_numeric_suffix_when_names_differ(self):
         module = load_module("derive_chrom_pairs", REPO_ROOT / "bin" / "derive_chrom_pairs.py")
@@ -858,9 +889,14 @@ class NextflowTypedMigrationTests(unittest.TestCase):
         self.assertIn("process LIFTOVER_VCF", vcf_nf)
         self.assertIn("vcf_file: Path", vcf_nf)
         self.assertIn("transanno liftvcf", vcf_nf)
+        self.assertIn('bcftools sort -Oz -o "\\${sorted_out_vcf}" -T "\\${TMPDIR}/bcftools-sort-success.XXXXXX" "\\${out_vcf}"', vcf_nf)
+        self.assertIn('bcftools sort -Oz -o "\\${sorted_rejected_vcf}" -T "\\${TMPDIR}/bcftools-sort-rejected.XXXXXX" "\\${rejected_vcf}"', vcf_nf)
+        self.assertLess(vcf_nf.index("bcftools sort"), vcf_nf.index("tabix -f -p vcf"))
         self.assertIn("tabix -f -p vcf", vcf_nf)
         self.assertIn("stageAs ref_fai, 'liftover_ref.fa.fai'", vcf_nf)
         self.assertIn("stageAs query_fai, 'liftover_query.fa.fai'", vcf_nf)
+        env_yml = (REPO_ROOT / "environment.yml").read_text(encoding="utf-8")
+        self.assertIn("  - bcftools=", env_yml)
 
     def test_processes_use_stage_aliases_for_same_named_inputs(self):
         prepare_nf = (
